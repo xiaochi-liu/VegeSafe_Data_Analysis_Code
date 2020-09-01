@@ -1,0 +1,230 @@
+---
+title: "Principal Component Analysis"
+author: "Xiaochi"
+date: "01/09/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(FactoMineR)
+library(factoextra)
+library(ggpubr)
+```
+
+Principal component analysis (PCA) allows us to summarize and to visualize the information in a data set containing observations described by multiple inter-correlated quantitative variables.
+The information in a given data set corresponds to the total variation it contains. 
+The goal of PCA is to identify directions (or principal components) along which the variation in the data is maximal.
+In other words, PCA reduces the dimensionality of a multivariate data to two or three principal components, that can be visualized graphically, with minimal loss of information.
+
+In our case, we have 8 trace elements concentration (As, Cd, Cr, Cu, Mn, Pb, Ni, Zn) of 17,256 samples from different regions of Australia. 
+We can use PCA to reduce the number of variables needed to describe the variation between individual samples from different regions of Australia
+
+
+# All Samples
+
+
+```{r}
+df_vege <- read_rds("../data_output/df_vege.rds")
+res.pca <- PCA(df_vege[ , c("As", "Cd", "Cr", "Cu", "Mn", "Pb", "Ni", "Zn")], 
+               graph = FALSE)
+```
+
+## Eigenvalues / Varianaces
+
+The eigenvalues measure the amount of variation retained by each principal component (PC). 
+Eigenvalues are large for the first PCs and small for the subsequent PCs.
+That is, the first PC corresponds to the directions with the maximum amount of variation in the data set.
+
+```{r}
+eig.val <- get_eigenvalue(res.pca)
+```
+
+
+```{r}
+fviz_eig(res.pca, addlabels = TRUE, title = "Scree Plot") +
+  theme_classic2()
+```
+
+From the plot above, we observed that the PC1 (Dimension 1) and second PC2 (Dimension 2) together can explain 26.3% + 14.8% = 41.1% of the information (variances) contained in the data (all samples).
+
+## Graph of individuals
+
+Individual samples that are similar are grouped together on the plot.
+
+Individuals plot with concentration ellipses:
+
+```{r}
+fviz_pca_ind(res.pca,
+             geom.ind = "point", # show points only (but not "text")
+             pointshape = 22,
+             pointsize = 1,
+             fill.ind = df_vege$ste_name,
+             col.ind = df_vege$ste_name,
+             alpha.ind = 0.5,
+             palette = "Set1",
+             addEllipses = TRUE, # Concentration ellipses
+             #ellipse.type = "confidence",
+             title = "Individuals Plot",
+             legend.title = "State",
+             mean.point = FALSE) +
+  ggpubr::fill_palette("Set1") +
+  theme_classic2()
+```
+
+
+Individuals plot with convex hulls:
+
+```{r}
+plot_individual_all <- fviz_pca_ind(res.pca,
+             geom.ind = "point", # show points only (nbut not "text")
+             pointshape = 22,
+             pointsize = 1,
+             fill.ind = df_vege$ste_name,
+             col.ind = df_vege$ste_name,
+             alpha.ind = 0.5,
+             palette = "Set1",
+             addEllipses = TRUE, # Concentration ellipses
+             ellipse.type = "convex",
+             title = "Individuals Plot",
+             legend.title = "State",
+             mean.point = FALSE) +
+  ggpubr::fill_palette("Set1") +
+  theme_classic2()
+
+plot_individual_all
+```
+
+
+```{r}
+df_vege %>% 
+  count(ste_name, sort = TRUE)
+```
+
+## Graph of trace elements
+
+```{r}
+fviz_pca_var(res.pca, 
+             col.var = "contrib",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE,
+             title = "Variable Correlation Plot",
+             legend.title = "Trace element\ncontribution (%) to\nDim1 and Dim2") +
+  theme_classic2()
+```
+
+The plot above is known as variable correlation plot.
+The correlation between an original variable (trace element) and a principal component (Dim) is used as the coordinates on this plot.
+
+The correlation plot contains much information. 
+First, it shows the relationship between all 8 trace elements:
+
+1. Positively correlated trace elements are grouped together (e.g. Zn and Pb);
+
+2. Negatively correlated trace elements are positioned on opposite sides of the plot origin (opposed quadrants);
+
+Second, the length of the arrow indicates how much the PC1 and PC2 (Dim1 and Dim2) can represent the original trace elements,in other word, the quality of the representation:
+
+1. The closer a trace element is to the circumference of the circle (e.g. Zn), the better its representation by PC1 and PC2.
+
+2. The closer a trace element is to the centre of the circle (e.g. Ni), the fewer its representation by the PC1 and PC2.
+
+Third, the colour of the arrow shows the importance of the trace element, (i.e. the total contribution of the trace element to PC1 and PC2). 
+
+
+# Samples from Sydney, Melbourne, and Brisbane
+
+```{r}
+df_3cities <- df_vege %>% 
+  filter(sua_name %in% c("Sydney", "Melbourne", "Brisbane"))
+
+res.pca.3cities <- PCA(df_3cities[ , c("As", "Cd", "Cr", "Cu", "Mn", "Pb", "Ni", "Zn")], 
+                       graph = FALSE)
+```
+
+## Eigenvalues / Varianaces
+
+```{r}
+fviz_eig(res.pca.3cities, addlabels = TRUE, title = "Scree Plot") +
+  theme_classic2()
+```
+
+## Graph of individuals
+
+```{r}
+fviz_pca_ind(res.pca.3cities,
+             axes = c(1, 2),
+             geom.ind = "point", # show points only (nbut not "text")
+             pointshape = 22,
+             pointsize = 1,
+             fill.ind = df_3cities$sua_name,
+             col.ind = df_3cities$sua_name,
+             alpha.ind = 0.5,
+             palette = "Set1",
+             addEllipses = TRUE, # Concentration ellipses
+             #ellipse.type = "convex",
+             title = "Individuals Plot",
+             legend.title = "Cities",
+             mean.point = FALSE) +
+  ggpubr::fill_palette("Set1") +
+  theme_classic2()
+```
+
+
+```{r}
+plot_individual_3cities <- fviz_pca_ind(res.pca.3cities,
+             geom.ind = "point", # show points only (nbut not "text")
+             pointshape = 22,
+             pointsize = 1,
+             fill.ind = df_3cities$sua_name,
+             col.ind = df_3cities$sua_name,
+             alpha.ind = 0.5,
+             palette = "Set1",
+             addEllipses = TRUE, # Concentration ellipses
+             ellipse.type = "convex",
+             title = "Individuals Plot",
+             legend.title = "Cities",
+             mean.point = FALSE) +
+  ggpubr::fill_palette("Set1") +
+  theme_classic2()
+
+plot_individual_3cities
+```
+
+
+```{r}
+df_3cities %>% 
+  count(sua_name, sort = TRUE)
+```
+
+## Graph of trace elements
+
+```{r}
+fviz_pca_var(res.pca.3cities, 
+             col.var = "contrib",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE,
+             title = "Variable Correlation Plot",
+             legend.title = "Trace element\ncontribution (%) to\nDim1 and Dim2"
+             ) +
+  theme_classic2()
+```
+
+The plot above shows that in the samples of 3 cities:
+
+1. Pb, Zn, As, Cu grouped together thus they were correlated positively;
+
+2. Mn, Ni, Cr grouped together thus they were correlated positively;
+
+3. Pb, Zn, As, Cu, Cd were positively correlated with PC1 while negatively correlated with PC2;
+
+4. Mn, Ni, and Cr were positively correlated both with PC1 and PC2;
+
+5. Pb and Zn can be well represented by PC1 and PC2;
+
+6. Pb and Zn were the most important trace elements in PC1 and PC2
+
+
+
