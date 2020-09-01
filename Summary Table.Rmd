@@ -1,0 +1,399 @@
+---
+title: "Untitled"
+author: "Xiaochi"
+date: "21/11/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(DT)
+library(tidyverse)
+library(skimr)
+library(asbio)
+```
+
+```{r Data Import}
+df_vege <- read_rds("../data_output/df_vege.rds")
+names(df_vege)
+df_vege %>% 
+  count(OwnerAddress)
+```
+
+```{r}
+df_vege %>% 
+  select(As, Cd, Cr, Cu, Mn, Ni, Pb, Zn) %>% 
+  skim()
+```
+
+```{r median_cl_boot}
+median_cl_boot <- function(x, conf = 0.95) {
+    lconf <- (1 - conf)/2
+    uconf <- 1 - lconf
+    require(boot)
+    bmedian <- function(x, ind) median(x[ind])
+    bt <- boot(x, bmedian, 1000)
+    bb <- boot.ci(bt, type = "perc")
+    data.frame(y = median(x), ymin = quantile(bt$t, lconf), ymax = quantile(bt$t, 
+        uconf))
+}
+```
+
+
+```{r df_long summary}
+df_long <- df_vege %>% 
+  pivot_longer(cols = As : Zn,
+               names_to = "element",
+               values_to = "concentration")
+```
+
+```{r}
+# n > LoQ
+df_vege %>% 
+  filter(Zn > 1)
+```
+
+
+
+```{r df_long summary}
+df_long %>% 
+  group_by(element) %>% 
+  summarise(
+    min = min(concentration),
+    percentile_5 = quantile(concentration, 0.05),
+    median = median(concentration),
+    percentile_95 = quantile(concentration, 0.95),
+    max = max(concentration)
+  )
+```
+
+```{r df_newly_cleaned summary}
+As_guide <- 100
+Cd_guide <- 20
+Cr_guide <- 100
+Cu_guide <- 6000
+Pb_guide <- 300
+Mn_guide <- 3800
+Ni_guide <- 400
+Zn_guide <- 7400
+```
+
+
+```{r}
+mean_cl_boot(df_vege$As)
+```
+
+
+
+```{r df_newly_cleaned summary}
+# homes with a sample > guidelines
+n_homes <- df_vege %>% 
+  filter(Ni > Ni_guide) %>% 
+  count(OwnerAddress) %>% 
+  nrow()
+
+n_homes
+n_homes/3609*100
+```
+
+
+```{r df_newly_cleaned summary}
+# smaples > guidelines
+n_samples <- df_vege %>% 
+  filter(Zn > Zn_guide) %>% 
+  nrow()
+
+n_samples  
+n_samples/17256*100
+```
+
+
+# 3 cities
+
+```{r}
+library(ggpubr)
+```
+
+
+```{r}
+df_3cities <- read_rds("../data_output/df_3cities.rds")
+As_guide <- 100
+Cd_guide <- 20
+Cr_guide <- 100
+Cu_guide <- 6000
+Pb_guide <- 300
+Mn_guide <- 3800
+Ni_guide <- 400
+Zn_guide <- 7400
+```
+
+
+```{r}
+mean_fun <- function(x){
+  return(data.frame(y = mean(x),
+                    label = format(round(mean(x, na.rm = TRUE), 1), nsmall = 1)))
+}
+
+ci_fun <- function(x){
+  return(data.frame(y = mean_cl_boot(x),
+                    label = format(round(mean(x, na.rm = TRUE), 1), nsmall = 1)))
+}
+
+
+```
+
+## As
+
+```{r}
+plot_As <- df_3cities %>% 
+  mutate(sua_name = factor(sua_name, levels = c("Sydney", "Melbourne", "Brisbane"))) %>% 
+  ggplot(aes(x = sua_name, y = As)) +
+  #stat_regline_equation() +
+  #geom_hline(aes(yintercept = As_guide), linetype = "dashed", size = 1, colour = "black") +
+  # mean
+  stat_summary(fun = mean, geom = "point", size = 3, aes(colour = sua_name)) +
+  stat_summary(fun.data = mean_fun, geom = "text", colour = "black", position = position_nudge(x = 0.2)) +
+  # confidence interval
+  stat_summary(fun.data = mean_cl_boot, geom = "errorbar", aes(colour = sua_name)) +
+  labs(x = "Cities") +
+  theme_pubr() +
+  theme(legend.position = "none")
+plot_As
+```
+
+## Cd_guide <- 20
+
+```{r}
+plot_Cd <- df_3cities %>% 
+  mutate(sua_name = factor(sua_name, levels = c("Sydney", "Melbourne", "Brisbane"))) %>% 
+  ggplot(aes(x = sua_name, y = Cd)) +
+  #stat_regline_equation() +
+  #geom_hline(aes(yintercept = Pb_guide), linetype = "dashed", size = 1, colour = "black") +
+  # mean
+  stat_summary(fun = mean, geom = "point", size = 3, aes(colour = sua_name)) +
+  stat_summary(fun.data = mean_fun, geom = "text", colour = "black", position = position_nudge(x = 0.2)) +
+  # confidence interval
+  stat_summary(fun.data = mean_cl_boot, geom = "errorbar", aes(colour = sua_name)) +
+  labs(x = "Cities") +
+  theme_pubr() +
+  theme(legend.position = "none")
+
+plot_Cd
+```
+
+
+## Cr_guide <- 100
+
+```{r}
+plot_Cr <- df_3cities %>% 
+  mutate(sua_name = factor(sua_name, levels = c("Sydney", "Melbourne", "Brisbane"))) %>% 
+  ggplot(aes(x = sua_name, y = Cr)) +
+  #stat_regline_equation() +
+  geom_hline(aes(yintercept = Cr_guide), linetype = "dashed", size = 1, colour = "black") +
+  # mean
+  stat_summary(fun = mean, geom = "point", size = 3, aes(colour = sua_name)) +
+  stat_summary(fun.data = mean_fun, geom = "text", colour = "black", position = position_nudge(x = 0.2)) +
+  # confidence interval
+  stat_summary(fun.data = mean_cl_boot, geom = "errorbar", aes(colour = sua_name)) +
+  scale_y_continuous(breaks = seq(40, 100, 10)) +
+  labs(x = "Cities") +
+  theme_pubr() +
+  theme(legend.position = "none")
+
+plot_Cr
+```
+
+
+## Cu_guide <- 6000
+
+```{r}
+plot_Cu <- df_3cities %>% 
+  mutate(sua_name = factor(sua_name, levels = c("Sydney", "Melbourne", "Brisbane"))) %>% 
+  ggplot(aes(x = sua_name, y = Cu)) +
+  #stat_regline_equation() +
+  #geom_hline(aes(yintercept = Pb_guide), linetype = "dashed", size = 1, colour = "black") +
+  # mean
+  stat_summary(fun = mean, geom = "point", size = 3, aes(colour = sua_name)) +
+  stat_summary(fun.data = mean_fun, geom = "text", colour = "black", position = position_nudge(x = 0.2)) +
+  # confidence interval
+  stat_summary(fun.data = mean_cl_boot, geom = "errorbar", aes(colour = sua_name)) +
+  labs(x = "Cities") +
+  theme_pubr() +
+  theme(legend.position = "none")
+
+plot_Cu
+```
+
+
+
+## Pb_guide <- 300
+
+```{r}
+plot_Pb <- df_3cities %>% 
+  mutate(sua_name = factor(sua_name, levels = c("Sydney", "Melbourne", "Brisbane"))) %>% 
+  ggplot(aes(x = sua_name, y = Pb)) +
+  #stat_regline_equation() +
+  geom_hline(aes(yintercept = Pb_guide), linetype = "dashed", size = 1, colour = "black") +
+  # mean
+  stat_summary(fun = mean, geom = "point", size = 3, aes(colour = sua_name)) +
+  stat_summary(fun.data = mean_fun, geom = "text", colour = "black", position = position_nudge(x = 0.2)) +
+  # confidence interval
+  stat_summary(fun.data = mean_cl_boot, geom = "errorbar", aes(colour = sua_name)) +
+  labs(x = "Cities") +
+  theme_pubr() +
+  theme(legend.position = "none")
+
+plot_Pb
+```
+
+
+## Mn_guide <- 3800
+
+```{r}
+plot_Mn <- df_3cities %>% 
+  mutate(sua_name = factor(sua_name, levels = c("Sydney", "Melbourne", "Brisbane"))) %>% 
+  ggplot(aes(x = sua_name, y = Mn)) +
+  #stat_regline_equation() +
+  #geom_hline(aes(yintercept = Pb_guide), linetype = "dashed", size = 1, colour = "black") +
+  # mean
+  stat_summary(fun = mean, geom = "point", size = 3, aes(colour = sua_name)) +
+  stat_summary(fun.data = mean_fun, geom = "text", colour = "black", position = position_nudge(x = 0.2)) +
+  # confidence interval
+  stat_summary(fun.data = mean_cl_boot, geom = "errorbar", aes(colour = sua_name)) +
+  labs(x = "Cities") +
+  theme_pubr() +
+  theme(legend.position = "none")
+
+plot_Mn
+```
+
+
+
+## Ni_guide <- 400
+
+```{r}
+plot_Ni <- df_3cities %>% 
+  mutate(sua_name = factor(sua_name, levels = c("Sydney", "Melbourne", "Brisbane"))) %>% 
+  ggplot(aes(x = sua_name, y = Ni)) +
+  #stat_regline_equation() +
+  #geom_hline(aes(yintercept = Pb_guide), linetype = "dashed", size = 1, colour = "black") +
+  # mean
+  stat_summary(fun = mean, geom = "point", size = 3, aes(colour = sua_name)) +
+  stat_summary(fun.data = mean_fun, geom = "text", colour = "black", position = position_nudge(x = 0.2)) +
+  # confidence interval
+  stat_summary(fun.data = mean_cl_boot, geom = "errorbar", aes(colour = sua_name)) +
+  labs(x = "Cities") +
+  theme_pubr() +
+  theme(legend.position = "none")
+
+plot_Ni
+```
+
+
+
+## Zn_guide <- 7400
+
+```{r}
+plot_Zn <- df_3cities %>% 
+  mutate(sua_name = factor(sua_name, levels = c("Sydney", "Melbourne", "Brisbane"))) %>% 
+  ggplot(aes(x = sua_name, y = Zn)) +
+  #stat_regline_equation() +
+  #geom_hline(aes(yintercept = Pb_guide), linetype = "dashed", size = 1, colour = "black") +
+  # mean
+  stat_summary(fun = mean, geom = "point", size = 3, aes(colour = sua_name)) +
+  stat_summary(fun.data = mean_fun, geom = "text", colour = "black", position = position_nudge(x = 0.2)) +
+  # confidence interval
+  stat_summary(fun.data = mean_cl_boot, geom = "errorbar", aes(colour = sua_name)) +
+  labs(x = "Cities") +
+  theme_pubr() +
+  theme(legend.position = "none")
+
+plot_Zn
+```
+
+```{r fig.width=10, fig.height=5}
+ggarrange(plot_As, plot_Cd, plot_Cr, plot_Cu,
+          plot_Pb, plot_Mn, plot_Ni, plot_Zn,
+          ncol = 4, nrow = 2)
+```
+
+
+# go
+
+```{r}
+#+++++++++++++++++++++++++
+# Function to calculate the mean and the standard deviation
+  # for each group
+#+++++++++++++++++++++++++
+# data : a data frame
+# varname : the name of a column containing the variable to be summarized
+# groupnames : vector of column names to be used as grouping variables
+
+data_summary <- function(data, varname, groupnames){
+  require(plyr)
+  summary_func <- function(x, col){
+    c(mean = mean(x[[col]], na.rm=TRUE),
+      sd = sd(x[[col]], na.rm=TRUE))
+  }
+  
+  summary_func <- mean_cl_boot(df_3cities, Pb)
+  
+  data_sum <- ddply(data, groupnames, .fun=summary_func, varname)
+  data_sum <- rename(data_sum, c("mean" = varname))
+ return(data_sum)
+}
+
+
+library(ggpubr)
+```
+
+
+```{r}
+df_3cities %>% 
+  mutate(sua_name = factor(sua_name, levels = c("Sydney", "Melbourne", "Brisbane"))) %>% 
+  ggplot(aes(x = sua_name, y = Pb)) +
+  stat_summary(fun.y = mean, geom = "point", size = 3, aes(colour = sua_name)) +
+  stat_summary(fun.data = mean_cl_boot, geom = "errorbar", aes(colour = sua_name))+
+  theme_pubr() +
+  theme(legend.position = "none")
+```
+
+
+```{r}
+```
+
+
+```{r}
+df_3cities %>%
+  group_by(sua_name) %>% 
+  mean_cl_boot(Pb)
+
+mean_cl_boot(df_3cities$Pb)
+
+df_3cities %>% 
+  
+```
+
+
+
+```{r}
+library(Hmisc)
+
+df_3cities %>% 
+  group_by(sua_name) %>% 
+  select(Pb) %>% 
+  smean.cl.boot
+
+df_3cities %>% 
+  group_by(sua_name) %>% 
+  select(Pb) %>% 
+  smean.cl.boot
+  
+  
+
+mean_cl_boot(df_3cities$Pb)
+
+smean.cl.boot(df_3cities$Pb)
+levels(df_3cities$sua_name)
+```
+

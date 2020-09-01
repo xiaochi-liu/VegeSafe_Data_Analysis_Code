@@ -1,0 +1,816 @@
+---
+title: "Untitled"
+author: "Xiaochi"
+date: "08/02/2020"
+output:
+  word_document: 
+    df_print: kable
+    fig_caption: yes
+    fig_height: 5
+    fig_width: 7
+    reference_docx: ../common/word-style-Arial.docx
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = TRUE,
+	warning = TRUE
+)
+library(tidyverse)
+library(ggpubr)
+library(knitr)
+library(rstatix)
+library(scales)
+theme_set(theme_bw())
+```
+
+
+## Element ~ Location
+
+```{r data}
+df_newly_cleaned <- read_rds("../data_output/df_vege.rds")
+
+df_newly_cleaned %>% 
+  count(sample_location_category)
+```
+
+
+```{r data}
+# location_levels = c("frontyard", "dripline", "side", "backyard", "veggiepatch", "chickencoop", "compost", "unknown")
+
+location_levels = c("frontyard", "backyard", "veggiepatch", "dripline")
+
+df_location_test <- df_newly_cleaned %>% 
+  mutate(sample_location_category = factor(sample_location_category, 
+                                           levels = location_levels)) %>% 
+  filter(sample_location_category != "unknown") %>% 
+  mutate(sample_location_category = fct_recode(sample_location_category,
+                                               "front yard" = "frontyard",
+                                               "back yard" = "backyard",
+                                               "vegetable garden" = "veggiepatch",
+                                               "drip line" = "dripline"))
+
+df_location_test %>% 
+  count(sample_location_category)
+```
+
+We use Kruskal-Wallis test to check if there is any significant difference between the concentration of element in the different household locations.
+
+Kruskal-Wallis test is a non-parametric alternative to the one-way ANOVA test. 
+It extends the two-samples Wilcoxon test in the situation where there are more than two groups to compare. 
+It’s recommended when the assumptions of one-way ANOVA test are not met, which is the situation of our dataset.
+
+### Pb
+
+```{r eval=FALSE}
+df_location_test %>% 
+  group_by(sample_location_category) %>% 
+  get_summary_stats(Pb, type = "common")
+```
+
+
+```{r}
+ggline(df_location_test, 
+       x = "sample_location_category", 
+       y = "Pb", 
+       add = c("mean_ci"), 
+       xlab = "Sample Location",
+       font.tickslab = 12,
+       ylab = "Pb Concentration (mg/kg)",
+       title = "Mean Plot with 95% CI")
+```
+
+```{r}
+res.kruskal <- df_location_test %>% 
+  kruskal_test(Pb ~ sample_location_category)
+res.kruskal
+```
+
+Since the p-value < 0.001, we can conclude that there are significant differences between `r res.kruskal$.y.` concentrations in different location groups.
+
+```{r}
+effect_size <- df_location_test %>% 
+  kruskal_effsize(Pb ~ sample_location_category)
+effect_size
+```
+
+We could also get the effect size of the Kruskal-Wallis test `r effect_size$effsize`, which means sample location can explain `r effect_size$effsize*100`% of variance in `r effect_size$effsize`.
+The interpretation values commonly in published literature are: 0.01 -- 0.06 (small effect), 0.06 -- 0.14 (moderate effect) and >= 0.14 (large effect).
+Therefore, a samll effect was detected.
+
+From the output of the Kruskal-Wallis test, we know that there is a significant difference between groups, but we don’t know which pairs of groups are different.
+A significant Kruskal-Wallis test is generally followed up by Dunn’s test to identify which groups are different. 
+
+```{r}
+pwc <-  df_location_test %>% 
+  dunn_test(Pb ~ sample_location_category, p.adjust.method = "bonferroni")
+pwc
+```
+
+
+```{r}
+mean_fun <- function(x){
+  return(data.frame(y = mean(x),
+                    label = format(round(mean(x, na.rm = TRUE), 1), nsmall = 1)
+                    )
+         )}
+```
+
+
+```{r boxplot}
+n_fun <- function(x){
+  return(data.frame(y = median(x) + 30, 
+                    label = str_c("n = ", length(x))))
+}
+
+Pb_location <- df_location_test %>% 
+  ggplot(aes(x = sample_location_category, y = Pb, 
+             color = sample_location_category)) +
+  stat_boxplot(geom = "errorbar", width = 0.2) +
+  geom_boxplot(outlier.shape = NA) +
+  # stat_summary(fun.data = n_fun, geom = "text") +
+  stat_pvalue_manual(pwc, 
+                     hide.ns = TRUE, 
+                     remove.bracket = FALSE, tip.length = 0.0007, 
+                     y.position = 700, step.increase = 0.0035,
+                     #label = "p = {scientific(p.adj, 2)}"
+                     ) +
+  # add the number of observations
+  stat_summary(fun.data = n_fun, geom = "text", colour = "black") +
+  # add mean point
+  stat_summary(fun = mean, geom = "point", shape = 20, size = 5) +
+  # add mean text
+  stat_summary(fun.data = mean_fun, geom = "text", colour = "black",  
+               position = position_nudge(x = 0.18)) +
+  labs(x = "Sample Location",
+       y="Pb Concentration (mg/kg)",
+       subtitle = get_test_label(res.kruskal, detailed = TRUE),
+       caption = get_pwc_label(pwc)) +
+  scale_y_continuous(#limits = quantile(df_newly_cleaned$Pb, c(0, 1)),
+                     breaks = seq(0, 1000, by = 100))+
+  coord_cartesian(ylim = c(0, 850)) +
+  theme(panel.border = element_blank(), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(colour = "black"),
+        text=element_text(family="Helvetica"),
+        legend.position = "none")
+Pb_location
+```
+
+```{r}
+ggsave("../fig_output/Location/Pb.png", Pb_location,width = 7, height = 5)
+```
+
+```{r}
+df_location_test %>% 
+  group_by(sample_location_category) %>% 
+  summarise(ci = list(mean_cl_boot(Pb))) %>% 
+  unnest(cols = c(ci))
+```
+
+
+
+The result shows that the Pb concentration in:
+
+* backyard is significantly lower than frontyard (p = 0.00192); 
+* veggiepatch is significantly lower than frontyard (p<0.0001), dripline (p<0.0001), and backyard (p <0.0001)
+
+### As
+
+```{r eval=FALSE}
+df_location_test %>% 
+  group_by(sample_location_category) %>% 
+  get_summary_stats(As, type = "common")
+```
+
+
+```{r}
+ggline(df_location_test, 
+       x = "sample_location_category", 
+       y = "As", 
+       add = c("mean_ci"), 
+       xlab = "Sample Location",
+       font.tickslab = 12,
+       ylab = "As Concentration (mg/kg)",
+       title = "Mean Plot with 95% CI")
+```
+
+```{r}
+res.kruskal <- df_location_test %>% 
+  kruskal_test(As ~ sample_location_category)
+res.kruskal
+```
+
+Since the p-value < 0.001, we can conclude that there are significant differences between `r res.kruskal$.y.` concentrations in different location groups.
+
+```{r}
+effect_size <- df_location_test %>% 
+  kruskal_effsize(As ~ sample_location_category)
+effect_size
+```
+
+We could also get the effect size of the Kruskal-Wallis test `r effect_size$effsize`, which means sample location can explain `r effect_size$effsize*100`% of variance in `r effect_size$.y.`.
+A samll effect was detected.
+
+```{r}
+pwc <-  df_location_test %>% 
+  dunn_test(As ~ sample_location_category, p.adjust.method = "bonferroni")
+pwc
+```
+
+```{r boxplot}
+n_fun <- function(x){
+  return(data.frame(y = median(x) + 1.5, 
+                    label = str_c("n = ", length(x))))
+}
+
+As_location <- df_location_test %>% 
+  ggplot(aes(x = sample_location_category, y = As, 
+             color = sample_location_category)) +
+  stat_boxplot(geom = "errorbar", width = 0.2) +
+  geom_boxplot(outlier.shape = NA) +
+  # stat_summary(fun.data = n_fun, geom = "text") +
+  stat_pvalue_manual(pwc, 
+                     hide.ns = TRUE, remove.bracket = FALSE, 
+                     tip.length = 0.0002,
+                     y.position = 30, step.increase = 0.0007,
+                     #label = "p = {scientific(p.adj, 2)}"
+                     ) +
+  # add the number of observations
+  stat_summary(fun.data = n_fun, geom = "text", colour = "black") +
+  # add mean point
+  stat_summary(fun = mean, geom = "point", shape = 20, size = 7) +
+  # add mean text
+  stat_summary(fun.data = mean_fun, geom = "text", colour = "black",  
+               position = position_nudge(x = 0.18)) +
+  labs(x = "Sample Location",
+       y="As Concentration (mg/kg)",
+       subtitle = get_test_label(res.kruskal, detailed = TRUE),
+       caption = get_pwc_label(pwc)) +
+  scale_y_continuous(#limits = quantile(df_newly_cleaned$As, c(0, 1)),
+                     breaks = seq(0, 40, by = 5))+
+  coord_cartesian(ylim = c(0, 35)) +
+  theme(panel.border = element_blank(), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(colour = "black"),
+        text=element_text(family="Helvetica"),
+        legend.position = "none")
+As_location
+```
+
+
+```{r}
+ggsave("../fig_output/Location/As.png", As_location, width = 7, height = 5)
+```
+
+
+The result shows that the As concentration in:
+
+* veggiepatch is significantly lower than frontyard (p<0.001), dripline (p<0.001), and backyard (p <0.001)
+
+
+
+### Cr
+
+```{r eval=FALSE}
+df_location_test %>% 
+  group_by(sample_location_category) %>% 
+  get_summary_stats(Cr, type = "common")
+```
+
+
+```{r}
+ggline(df_location_test, 
+       x = "sample_location_category", 
+       y = "Cr", 
+       add = c("mean_ci"), 
+       xlab = "Sample Location",
+       font.tickslab = 12,
+       ylab = "Cr Concentration (mg/kg)",
+       title = "Mean Plot with 95% CI")
+```
+
+```{r}
+res.kruskal <- df_location_test %>% 
+  kruskal_test(Cr ~ sample_location_category)
+res.kruskal
+```
+
+Since the p-value < 0.001, we can conclude that there are significant differences between `r res.kruskal$.y.` concentrations in different location groups.
+
+```{r}
+effect_size <- df_location_test %>% 
+  kruskal_effsize(Cr ~ sample_location_category)
+effect_size
+```
+
+We could also get the effect size of the Kruskal-Wallis test `r effect_size$effsize`, which means sample location can explain `r effect_size$effsize*100`% of variance in `r effect_size$.y.`.
+Therefore, a samll effect was detected.
+
+```{r}
+pwc <-  df_location_test %>% 
+  dunn_test(Cr ~ sample_location_category, p.adjust.method = "bonferroni")
+pwc
+```
+
+```{r}
+n_fun <- function(x){
+  return(data.frame(y = median(x) - 5, 
+                    label = str_c("n = ", length(x))))
+}
+
+Cr_location <- df_location_test %>% 
+  ggplot(aes(x = sample_location_category, y = Cr, 
+             color = sample_location_category)) +
+  stat_boxplot(geom = "errorbar", width = 0.2) +
+  geom_boxplot(outlier.shape = NA) +
+  # stat_summary(fun.data = n_fun, geom = "text") +
+  stat_pvalue_manual(pwc, 
+                     hide.ns = TRUE, 
+                     remove.bracket = FALSE, tip.length = 0.0003,
+                     y.position = 105, step.increase = 0.001,
+                     # label = "p = {scientific(p.adj, 2)}"
+                     ) +
+  # add the number of observations
+  stat_summary(fun.data = n_fun, geom = "text", colour = "black") +
+  # add mean point
+  stat_summary(fun = mean, geom = "point", shape = 20, size = 7) +
+  # add mean text
+  stat_summary(fun.data = mean_fun, geom = "text", colour = "black",  
+               position = position_nudge(x = 0.18)) +
+  labs(x = "Sample Location",
+       y="Cr Concentration (mg/kg)",
+       subtitle = get_test_label(res.kruskal, detailed = TRUE),
+       caption = get_pwc_label(pwc)) +
+  scale_y_continuous(# limits = quantile(df_newly_cleaned$Cr, c(0, 1)),
+                     breaks = seq(0, 140, by = 20))+
+  coord_cartesian(ylim = c(0, 140)) +
+  theme(panel.border = element_blank(), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(colour = "black"),
+        text=element_text(family="Helvetica"),
+        legend.position = "none")
+Cr_location
+```
+
+```{r}
+ggsave("../fig_output/Location/Cr.png", Cr_location, width = 7, height = 5)
+```
+
+
+The result shows that the `r res.kruskal$.y.` concentration in:
+
+* dripline is significantly higher than frontyard;
+# side is significantly higher than frontyard;
+# backyard is significantly higher than frontyard;
+# veggiepatch is significantly lower than dripline, side, and backyard;
+
+
+### Cu
+
+```{r}
+ggline(df_location_test, 
+       x = "sample_location_category", 
+       y = "Cu", 
+       add = c("mean_ci"), 
+       xlab = "Sample Location",
+       font.tickslab = 12,
+       ylab = "Cu Concentration (mg/kg)",
+       title = "Mean Plot with 95% CI")
+```
+
+```{r}
+res.kruskal <- df_location_test %>% 
+  kruskal_test(Cu ~ sample_location_category)
+res.kruskal
+```
+
+Since the p-value < 0.001, we can conclude that there are significant differences between `r res.kruskal$.y.` concentrations in different location groups.
+
+```{r}
+effect_size <- df_location_test %>% 
+  kruskal_effsize(Cu ~ sample_location_category)
+effect_size
+```
+
+We could also get the effect size of the Kruskal-Wallis test `r effect_size$effsize`, which means sample location can explain `r effect_size$effsize*100`% of variance in `r effect_size$.y.`.
+Therefore, a samll effect was detected.
+
+```{r}
+pwc <-  df_location_test %>% 
+  dunn_test(Cu ~ sample_location_category, p.adjust.method = "bonferroni")
+pwc
+```
+
+
+```{r}
+n_fun <- function(x){
+  return(data.frame(y = median(x) - 6, 
+                    label = str_c("n = ", length(x))))
+}
+
+Cu_location <- df_location_test %>% 
+  ggplot(aes(x = sample_location_category, y = Cu, color = sample_location_category)) +
+  stat_boxplot(geom = "errorbar", width = 0.2) +
+  geom_boxplot(outlier.shape = NA) +
+  # stat_summary(fun.data = n_fun, geom = "text") +
+  stat_pvalue_manual(pwc, 
+                     hide.ns = TRUE, 
+                     remove.bracket = FALSE, tip.length = 0.0003,
+                     y.position = 125, step.increase = 0.0015,
+                     #label = "p = {scientific(p.adj, 2)}"
+                     ) +
+  # add the number of observations
+  stat_summary(fun.data = n_fun, geom = "text", colour = "black") +
+  # add mean point
+  stat_summary(fun = mean, geom = "point", shape = 20, size = 7) +
+  # add mean text
+  stat_summary(fun.data = mean_fun, geom = "text", colour = "black",  
+               position = position_nudge(x = 0.18)) +
+  labs(x = "Sample Location",
+       y="Cu Concentration (mg/kg)",
+       subtitle = get_test_label(res.kruskal, detailed = TRUE),
+       caption = get_pwc_label(pwc)) +
+  scale_y_continuous(# limits = quantile(df_newly_cleaned$Cu, c(0, 1)),
+                     breaks = seq(0, 170, by = 20))+
+  coord_cartesian(ylim = c(0, 160)) +
+  theme(panel.border = element_blank(), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(colour = "black"),
+        text=element_text(family="Helvetica"),
+        legend.position = "none")
+Cu_location
+```
+
+
+```{r}
+ggsave("../fig_output/Location/Cu.png", Cu_location, width = 7, height = 5)
+```
+
+The result shows that the `r res.kruskal$.y.` concentration in:
+
+* dripline is significantly higher than frontyard;
+* backyard is significantly higher than frontyard;
+* veggiepatch is significantly higher than frontyard, but significantly lower than backyard;
+
+
+
+
+### Mn
+
+```{r}
+ggline(df_location_test, 
+       x = "sample_location_category", 
+       y = "Mn", 
+       add = c("mean_ci"), 
+       xlab = "Sample Location",
+       font.tickslab = 12,
+       ylab = "Mn Concentration (mg/kg)",
+       title = "Mean Plot with 95% CI")
+```
+
+```{r}
+res.kruskal <- df_location_test %>% 
+  kruskal_test(Mn ~ sample_location_category)
+res.kruskal
+```
+
+Since the p-value < 0.001, we can conclude that there are significant differences between `r res.kruskal$.y.` concentrations in different location groups.
+
+```{r}
+effect_size <- df_location_test %>% 
+  kruskal_effsize(Mn ~ sample_location_category)
+effect_size
+```
+
+We could also get the effect size of the Kruskal-Wallis test `r effect_size$effsize`, which means sample location can explain `r effect_size$effsize*100`% of variance in `r effect_size$.y.`.
+Therefore, a samll effect was detected.
+
+```{r}
+pwc <-  df_location_test %>% 
+  dunn_test(Mn ~ sample_location_category, p.adjust.method = "bonferroni")
+pwc
+```
+
+
+```{r}
+n_fun <- function(x){
+  return(data.frame(y = median(x) - 30, 
+                    label = str_c("n = ", length(x))))
+}
+
+Mn_location <- df_location_test %>% 
+  ggplot(aes(x = sample_location_category, y = Mn, color = sample_location_category)) +
+  stat_boxplot(geom = "errorbar", width = 0.2) +
+  geom_boxplot(outlier.shape = NA) +
+  # stat_summary(fun.data = n_fun, geom = "text") +
+  stat_pvalue_manual(pwc, 
+                     hide.ns = TRUE, 
+                     remove.bracket = FALSE, tip.length = 0.0003,
+                     y.position = 730, step.increase = 0.002,
+                     # label = "p = {scientific(p.adj, 2)}"
+                     ) +
+  # add the number of observations
+  stat_summary(fun.data = n_fun, geom = "text", colour = "black") +
+  # add mean point
+  stat_summary(fun = mean, geom = "point", shape = 20, size = 7) +
+  # add mean text
+  stat_summary(fun.data = mean_fun, geom = "text", colour = "black",  
+               position = position_nudge(x = 0.18)) +
+  labs(x = "Sample Location",
+       y="Mn Concentration (mg/kg)",
+       subtitle = get_test_label(res.kruskal, detailed = TRUE),
+       caption = get_pwc_label(pwc)) +
+  scale_y_continuous(# limits = quantile(df_newly_cleaned$Mn, c(0, 1)),
+                     breaks = seq(0, 880, by = 200))+
+  coord_cartesian(ylim = c(0, 800)) +
+  theme(panel.border = element_blank(), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(colour = "black"),
+        text=element_text(family="Helvetica"),
+        legend.position = "none")
+Mn_location
+```
+
+
+```{r}
+ggsave("../fig_output/Location/Mn.png", Mn_location, width = 7, height = 5)
+```
+
+The result shows that the `r res.kruskal$.y.` concentration in:
+
+* frontyard is significantly higher than all other locations except chickencoop.
+
+
+### Ni
+
+```{r}
+ggline(df_location_test, 
+       x = "sample_location_category", 
+       y = "Ni", 
+       add = c("mean_ci"), 
+       xlab = "Sample Location",
+       font.tickslab = 12,
+       ylab = "Ni Concentration (mg/kg)",
+       title = "Mean Plot with 95% CI")
+```
+
+```{r}
+res.kruskal <- df_location_test %>% 
+  kruskal_test(Ni ~ sample_location_category)
+res.kruskal
+```
+
+Since the p-value < 0.001, less than the significance level 0.05, we can conclude that there are significant differences between `r res.kruskal$.y.` concentrations in different location groups.
+
+```{r}
+effect_size <- df_location_test %>% 
+  kruskal_effsize(Ni ~ sample_location_category)
+effect_size
+```
+
+We could also get the effect size of the Kruskal-Wallis test `r effect_size$effsize`, which means sample location can explain `r effect_size$effsize*100`% of variance in `r effect_size$.y.`.
+Therefore, a samll effect was detected.
+
+
+```{r}
+pwc <-  df_location_test %>% 
+  dunn_test(Ni ~ sample_location_category, p.adjust.method = "bonferroni")
+pwc
+```
+
+```{r}
+n_fun <- function(x){
+  return(data.frame(y = 3, 
+                    label = str_c("n = ", length(x))))
+}
+
+Ni_location <- df_location_test %>% 
+  ggplot(aes(x = sample_location_category, y = Ni, color = sample_location_category)) +
+  stat_boxplot(geom = "errorbar", width = 0.2) +
+  geom_boxplot(outlier.shape = NA) +
+  # stat_summary(fun.data = n_fun, geom = "text") +
+  stat_pvalue_manual(pwc, hide.ns = TRUE, 
+                     remove.bracket = FALSE, tip.length = 0.0005,
+                     y.position = 55, step.increase = 0.003,
+                     # label = "p = {scientific(p.adj, 2)}"
+                     ) +
+  # add the number of observations
+  stat_summary(fun.data = n_fun, geom = "text", colour = "black") +
+  # add mean point
+  stat_summary(fun = mean, geom = "point", shape = 20, size = 7) +
+  # add mean text
+  stat_summary(fun.data = mean_fun, geom = "text", colour = "black",  
+               position = position_nudge(x = 0.18)) +
+  labs(x = "Sample Location",
+       y="Ni Concentration (mg/kg)",
+       subtitle = get_test_label(res.kruskal, detailed = TRUE),
+       caption = get_pwc_label(pwc)) +
+  scale_y_continuous(# limits = quantile(df_newly_cleaned$Ni, c(0, 1)),
+                     breaks = seq(0, 80, by = 10))+
+  coord_cartesian(ylim = c(0, 70)) +
+  theme(panel.border = element_blank(), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(colour = "black"),
+        text=element_text(family="Helvetica"),
+        legend.position = "none")
+Ni_location
+```
+
+
+```{r}
+ggsave("../fig_output/Location/Ni.png", Ni_location, width = 7, height = 5)
+```
+
+### Zn
+
+```{r}
+ggline(df_location_test, 
+       x = "sample_location_category", 
+       y = "Zn", 
+       add = c("mean_ci"), 
+       xlab = "Sample Location",
+       font.tickslab = 12,
+       ylab = "Zn Concentration (mg/kg)",
+       title = "Mean Plot with 95% CI")
+```
+
+```{r}
+res.kruskal <- df_location_test %>% 
+  kruskal_test(Zn ~ sample_location_category)
+res.kruskal
+```
+
+Since the p-value < 0.001, we can conclude that there are significant differences between `r res.kruskal$.y.` concentrations in different location groups.
+
+```{r}
+effect_size <- df_location_test %>% 
+  kruskal_effsize(Zn ~ sample_location_category)
+effect_size
+```
+
+We could also get the effect size of the Kruskal-Wallis test `r effect_size$effsize`, which means sample location can explain `r effect_size$effsize*100`% of variance in `r effect_size$.y.`.
+Therefore, a samll effect was detected.
+
+From the output of the Kruskal-Wallis test, we know that there is a significant difference between groups, but we don’t know which pairs of groups are different.
+A significant Kruskal-Wallis test is generally followed up by Dunn’s test to identify which groups are different. 
+
+```{r}
+pwc <-  df_location_test %>% 
+  dunn_test(Zn ~ sample_location_category, p.adjust.method = "bonferroni")
+pwc
+```
+
+
+```{r}
+n_fun <- function(x){
+  return(data.frame(y = median(x) - 40, 
+                    label = str_c("n = ", length(x))))
+}
+
+Zn_location <- df_location_test %>% 
+  ggplot(aes(x = sample_location_category, y = Zn, color = sample_location_category)) +
+  stat_boxplot(geom = "errorbar", width = 0.2) +
+  geom_boxplot(outlier.shape = NA) +
+  # stat_summary(fun.data = n_fun, geom = "text") +
+  stat_pvalue_manual(pwc, 
+                     hide.ns = TRUE, 
+                     remove.bracket = FALSE, tip.length = 0.0005,
+                     y.position = 1200, step.increase = 0.003,
+                     # label = "p = {scientific(p.adj, 2)}"
+                     ) +
+  # add the number of observations
+  stat_summary(fun.data = n_fun, geom = "text", colour = "black") +
+  # add mean point
+  stat_summary(fun = mean, geom = "point", shape = 20, size = 7) +
+  # add mean text
+  stat_summary(fun.data = mean_fun, geom = "text", colour = "black",  
+               position = position_nudge(x = 0.18)) +
+  labs(x = "Sample Location",
+       y="Zn Concentration (mg/kg)",
+       subtitle = get_test_label(res.kruskal, detailed = TRUE),
+       caption = get_pwc_label(pwc)) +
+  scale_y_continuous(# limits = quantile(df_newly_cleaned$Zn, c(0, 1)),
+                     breaks = seq(0, 1650, by = 200))+
+  coord_cartesian(ylim = c(0, 1600)) +
+  theme(panel.border = element_blank(), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(colour = "black"),
+        text=element_text(family="Helvetica"),
+        legend.position = "none")
+Zn_location
+```
+
+```{r}
+ggsave("../fig_output/Location/Zn.png", Zn_location, width = 7, height = 5)
+```
+
+
+
+
+## Element ~ Matirial
+
+```{r}
+df_newly_cleaned <- read_rds("../data_output/newly_cleaned.rds")
+```
+
+
+```{r}
+df_newly_cleaned <- df_newly_cleaned %>% 
+  rename(brick = "type_1",
+         timber = "type_2",
+         fibro = "type_3",
+         metal = "type_4",
+         stone = "type_5",
+         no_structure = "type_6")
+
+df_matirial_long <- pivot_longer(df_newly_cleaned,
+                                 brick:no_structure,
+                                 names_to = "matirial_name",
+                                 values_to = "matirial_contain")
+
+matirial_levels <- c("brick", "timber", "fibro", "metal", "stone", "no_structure")
+
+df_matirial_test <- df_matirial_long %>%
+  filter(!is.na(matirial_contain)) %>% 
+  dplyr::select(- matirial_name) %>% 
+  mutate(matirial_contain = factor(matirial_contain, levels = matirial_levels)) %>% 
+  filter(matirial_contain != "no_structure")
+```
+
+### Pb
+
+```{r}
+ggline(df_matirial_test, 
+       x = "matirial_contain", 
+       y = "Pb", 
+       add = c("mean_ci"), 
+       xlab = "Containing Building Matirial",
+       font.tickslab = 12,
+       ylab = "Pb Concentration (mg/kg)",
+       title = "Mean Plot with 95% CI")
+```
+
+```{r}
+res.kruskal <- df_matirial_test %>% 
+  kruskal_test(Pb ~ matirial_contain)
+res.kruskal
+```
+
+Since the p-value < 0.001, less than the significance level 0.05, we can conclude that there are significant differences between `r res.kruskal$.y.` concentrations in different households containing different building matirials.
+
+```{r}
+effect_size <- df_matirial_test %>% 
+  kruskal_effsize(Pb ~ matirial_contain)
+effect_size
+```
+
+We could also get the effect size of the Kruskal-Wallis test `r effect_size$effsize`, which means sample location can explain `r effect_size$effsize*100`% of variance in `r effect_size$.y.`.
+The interpretation values commonly in published literature are: 0.01 -- 0.06 (small effect), 0.06 -- 0.14 (moderate effect) and >= 0.14 (large effect).
+Therefore, a small effect was detected.
+
+From the output of the Kruskal-Wallis test, we know that there is a significant difference between groups, but we don’t know which pairs of groups are different.
+A significant Kruskal-Wallis test is generally followed up by Dunn’s test to identify which groups are different. 
+
+```{r}
+pwc <-  df_matirial_test %>% 
+  dunn_test(Pb ~ matirial_contain, p.adjust.method = "bonferroni")
+```
+
+```{r}
+# Visualization: box plots with p-values
+# "max", "mean", "mean_sd", "mean_se", "mean_ci", "median", "median_iqr", "median_mad".
+pwc <- pwc %>% 
+  add_xy_position(x = "group", fun = "mean")
+
+ggline(df_matirial_test, x = "matirial_contain", y = "Pb", 
+       add = c("mean_ci"), 
+       xlab = "Containing Building Matirial", ylab = "Pb Concentration (mg/kg)",
+       font.tickslab = 12,
+       title = "Mean Plot with 95% CI") +
+  stat_pvalue_manual(pwc, hide.ns = TRUE, remove.bracket = FALSE, tip.length = 0.0001) +
+  labs(subtitle = get_test_label(res.kruskal, detailed = TRUE),
+       caption = get_pwc_label(pwc))
+```
+
+Although we find significant difference in Pb concentration between different building matirial groups, I need to make sure whether Kruskal-Wallis test is suitable in this situation, where a household may contain multiple kinds of building matirials.
+

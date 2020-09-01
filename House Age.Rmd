@@ -1,0 +1,415 @@
+---
+title: "HouseAge"
+author: "Xiaochi"
+date: "05/03/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = TRUE,
+	warning = TRUE
+)
+library(tidyverse)
+library(skimr)
+theme_set(theme_bw())
+```
+
+# Element ~ Houseage
+
+```{r Pb}
+df_newly_cleaned <- read_rds("../data_output/df_vege.rds")
+names(df_newly_cleaned)
+```
+
+```{r guidline}
+As_guide <- 100
+Cd_guide <- 20
+Cr_guide <- 100
+Cu_guide <- 6000
+Pb_guide <- 300
+Mn_guide <- 3800
+Ni_guide <- 400
+Zn_guide <- 7400
+```
+
+
+```{r}
+df_newly_cleaned %>% 
+  filter(paint != "unknown") %>% 
+  count(paint)
+
+13455/17256
+```
+
+
+
+```{r}
+df_lower_50 <- df_newly_cleaned %>% 
+  filter(paint != "unknown") %>% 
+  filter(PropertyAge <= 50)
+
+df_lower_50 %>% 
+  group_by(paint) %>% 
+  select(Pb) %>% 
+  skim()
+
+df_lower_50 %>% 
+  group_by(paint) %>% 
+  summarise(ci = list(mean_cl_boot(Pb))) %>% 
+  unnest(cols = c(ci))
+```
+
+
+```{r}
+df_higher_80 <- df_newly_cleaned %>% 
+  filter(paint != "unknown") %>% 
+  filter(PropertyAge >= 80)
+
+df_higher_80 %>% 
+  group_by(paint) %>% 
+  select(Pb) %>% 
+  skim()
+
+df_higher_80 %>% 
+  group_by(paint) %>% 
+  summarise(ci = list(mean_cl_boot(Pb))) %>% 
+  unnest(cols = c(ci))
+```
+
+```{r}
+mark_theme <- theme(panel.border = element_blank(), 
+                    panel.grid = element_blank(),
+                    panel.grid.major = element_blank(),
+                    panel.grid.minor = element_blank(), 
+                    axis.line = element_line(colour = "black"),
+                    axis.text = element_text(colour = "black"),
+                    text = element_text(family="Helvetica"),
+                    legend.position = "bottom")
+```
+
+
+## Pb
+
+
+```{r Pb}
+Pb_age <- df_newly_cleaned %>% 
+  filter(paint != "unknown") %>% 
+  ggplot(aes(PropertyAge, Pb, colour = paint)) +
+  #geom_point(alpha = 0.5) +
+  geom_smooth(level = 0.95) +
+  #stat_regline_equation() +
+  geom_hline(aes(yintercept = Pb_guide),
+             linetype = "dashed",
+             size = 1,
+             colour = "black",
+             show.legend =FALSE) +
+  geom_text(aes(x = 30, y = 350),
+            label= "Australian guideline for soil Pb = 300 mg/kg",
+            colour = "black") +
+  scale_colour_brewer(palette = "Set1",
+                      name = NULL,
+                      breaks = c("painted", "unpainted"),
+                      labels=c("n = 9439 painted", 
+                               "n = 4016 unpainted")) +
+  scale_y_continuous(breaks = seq(0, 700, by = 100), expand = c(0, 0)) +
+  scale_x_reverse(breaks = seq(0, 120, by = 20), expand = c(0, 0)) +
+  coord_cartesian(ylim = c(0, 700), xlim = c(120, 0)) +
+  labs(x = "Property Age (year)",
+       y="Pb Concentration (mg/kg)") +
+  mark_theme
+Pb_age
+```
+
+
+```{r Pb}
+ggsave("../fig_output/HouseAge/Pb.png", Pb_age, height = 5, width = 7)
+```
+
+
+
+
+## As
+
+```{r As}
+As_age <- df_newly_cleaned %>% 
+  filter(paint != "unknown") %>% 
+  ggplot(aes(PropertyAge, As, colour = paint)) +
+  geom_smooth(level = 0.95) +
+  # geom_hline(aes(yintercept = As_guide),
+  #            linetype = "dashed",
+  #            size = 1,
+  #            colour="green",
+  #            show.legend =FALSE) +
+  geom_text(aes(x = 40, y = 17), 
+            label= "Australian guideline for soil As = 100 mg/kg", 
+            colour="black") +
+  scale_y_continuous(breaks = seq(0, 20, by = 5), expand = c(0, 0)) +
+  scale_x_reverse(breaks = seq(0, 120, by = 20), expand = c(0, 0)) +
+  scale_colour_brewer(palette = "Set1",
+                      name = NULL,
+                      breaks = c("painted", "unpainted"),
+                      labels=c("n = 9439 painted", 
+                               "n = 4016 unpainted")) +
+  coord_cartesian(ylim = c(0, 20), xlim = c(120, 0)) +
+  labs(x = "Property Age (year)",
+       y="As Concentration (mg/kg)")+
+  theme(panel.border = element_blank(), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(colour = "black"),
+        text=element_text(family="Helvetica"),
+        legend.position = "bottom")
+As_age
+```
+
+
+```{r As}
+ggsave("../fig_output/HouseAge/As.png", As_age, height = 5, width = 7)
+```
+
+
+## Cr
+
+```{r Cr}
+Cr_age <- df_newly_cleaned %>% 
+  filter(paint != "unknown") %>% 
+  ggplot(aes(PropertyAge, Cr, colour = paint)) +
+  geom_smooth(level = 0.95) +
+  geom_hline(aes(yintercept = Cr_guide),
+             linetype = "dashed",
+             size = 1,
+             colour="black",
+             show.legend =FALSE) +
+  geom_text(aes(x = 40, y = 90), 
+            label= "Australian guideline for soil Cr = 100 mg/kg", 
+            colour="black") +
+  scale_y_continuous(breaks = seq(0, 100, by = 20), expand = c(0, 0)) +
+  scale_x_reverse(breaks = seq(0, 120, by = 20), expand = c(0, 0)) +
+  scale_colour_brewer(palette = "Set1",
+                      name = NULL,
+                      breaks = c("painted", "unpainted"),
+                      labels=c("n = 9439 painted", 
+                               "n = 4016 unpainted")) +
+  coord_cartesian(ylim = c(0, 100), xlim = c(120, 0)) +
+  labs(x = "Property Age (year)",
+       y="Cr Concentration (mg/kg)")+
+  theme(panel.border = element_blank(), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(colour = "black"),
+        text=element_text(family="Helvetica"),
+        legend.position = "bottom")
+Cr_age
+```
+
+
+```{r Cr}
+ggsave("../fig_output/HouseAge/Cr.png", Cr_age, height = 5, width = 7)
+```
+
+
+## Cu
+
+```{r Cu}
+Cu_age <- df_newly_cleaned %>% 
+  filter(paint != "unknown") %>% 
+  ggplot(aes(PropertyAge, Cu, colour = paint)) +
+  geom_smooth(level = 0.95) +
+  # geom_hline(aes(yintercept = Cu_guide),
+  #            linetype = "dashed",
+  #            size = 1,
+  #            colour="green",
+  #            show.legend =FALSE) +
+  geom_text(aes(x = 40, y = 90), 
+            label= "Australian guideline for soil Cu= 6,000 mg/kg", 
+            colour="black") +
+  scale_y_continuous(breaks = seq(0, 100, by = 20), expand = c(0, 0)) +
+  scale_x_reverse(breaks = seq(0, 120, by = 20), expand = c(0, 0)) +
+  scale_colour_brewer(palette = "Set1",
+                      name = NULL,
+                      breaks = c("painted", "unpainted"),
+                      labels=c("n = 9439 painted", 
+                               "n = 4016 unpainted")) +
+  coord_cartesian(ylim = c(0, 100), xlim = c(120, 0)) +
+  labs(x = "Property Age (year)",
+       y="Cu Concentration (mg/kg)")+
+  theme(panel.border = element_blank(), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(colour = "black"),
+        text=element_text(family="Helvetica"),
+        legend.position = "bottom")
+Cu_age
+```
+
+
+```{r}
+ggsave("../fig_output/HouseAge/Cu.png", Cu_age, height = 5, width = 7)
+```
+
+## Mn
+
+```{r Mn}
+Mn_age <- df_newly_cleaned %>% 
+  filter(paint != "unknown") %>% 
+  ggplot(aes(PropertyAge, Mn, colour = paint)) +
+  geom_smooth(level = 0.95) +
+  # geom_hline(aes(yintercept = Mn_guide),
+  #            linetype = "dashed",
+  #            size = 1,
+  #            colour="green",
+  #            show.legend =FALSE) +
+  geom_text(aes(x = 40, y = 550),
+            label= "Australian guideline for soil Mn = 3,800 mg/kg",
+            colour="black") +
+  scale_y_continuous(breaks = seq(0, 600, by = 100), expand = c(0, 0)) +
+  scale_x_reverse(breaks = seq(0, 120, by = 20), expand = c(0, 0)) +
+  scale_colour_brewer(palette = "Set1",
+                      name = NULL,
+                      breaks = c("painted", "unpainted"),
+                      labels=c("n = 9439 painted", 
+                               "n = 4016 unpainted")) +
+  coord_cartesian(ylim = c(0, 600), xlim = c(120, 0)) +
+  labs(x = "Property Age (year)",
+       y="Mn Concentration (mg/kg)")+
+  theme(panel.border = element_blank(), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(colour = "black"),
+        text=element_text(family="Helvetica"),
+        legend.position = "bottom")
+Mn_age
+```
+
+
+```{r Mn}
+ggsave("../fig_output/HouseAge/Mn.png", Mn_age, height = 5, width = 7)
+```
+
+## Ni
+
+```{r Ni}
+Ni_age <- df_newly_cleaned %>% 
+  filter(paint != "unknown") %>% 
+  ggplot(aes(PropertyAge, Ni, colour = paint)) +
+  geom_smooth(level = 0.95) +
+  # geom_hline(aes(yintercept = Ni_guide),
+  #            linetype = "dashed",
+  #            size = 1,
+  #            colour="green",
+  #            show.legend =FALSE) +
+  geom_text(aes(x = 40, y = 23),
+            label= "Australian guideline for soil Ni = 400 mg/kg",
+            colour="black") +
+  scale_y_continuous(breaks = seq(0, 25, by = 5), expand = c(0, 0)) +
+  scale_x_reverse(breaks = seq(0, 120, by = 20), expand = c(0, 0)) +
+  scale_colour_brewer(palette = "Set1",
+                      name = NULL,
+                      breaks = c("painted", "unpainted"),
+                      labels=c("n = 9439 painted", 
+                               "n = 4016 unpainted")) +
+  coord_cartesian(ylim = c(0, 25), xlim = c(120, 0)) +
+  labs(x = "Property Age (year)",
+       y="Ni Concentration (mg/kg)")+
+  theme(panel.border = element_blank(), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(colour = "black"),
+        text=element_text(family="Helvetica"),
+        legend.position = "bottom")
+Ni_age
+```
+
+
+```{r Ni}
+ggsave("../fig_output/HouseAge/Ni.png", Ni_age, height = 5, width = 7)
+```
+
+
+## Zn
+
+```{r Zn}
+Zn_age <- df_newly_cleaned %>% 
+  filter(paint != "unknown") %>% 
+  ggplot(aes(PropertyAge, Zn, colour = paint)) +
+  geom_smooth(level = 0.95) +
+  # geom_hline(aes(yintercept = Zn_guide),
+  #            linetype = "dashed",
+  #            size = 1,
+  #            colour="green",
+  #            show.legend =FALSE) +
+  geom_text(aes(x = 40, y = 700),
+            label= "Australian guideline for soil Zn = 7,400 mg/kg",
+            colour="black") +
+  scale_y_continuous(breaks = seq(0, 700, by = 100), expand = c(0, 0)) +
+  scale_x_reverse(breaks = seq(0, 120, by = 20), expand = c(0, 0)) +
+  scale_colour_brewer(palette = "Set1",
+                      name = NULL,
+                      breaks = c("painted", "unpainted"),
+                      labels=c("n = 9439 painted", 
+                               "n = 4016 unpainted")) +
+  coord_cartesian(ylim = c(0, 750), xlim = c(120, 0)) +
+  labs(x = "Property Age (year)",
+       y="Zn Concentration (mg/kg)")+
+  theme(panel.border = element_blank(), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(colour = "black"),
+        text=element_text(family="Helvetica"),
+        legend.position = "bottom")
+Zn_age
+```
+
+
+```{r Zn}
+ggsave("../fig_output/HouseAge/Zn.png", Zn_age, height = 5, width = 7)
+```
+
+
+
+
+
+
+
+
+
+
+```{r All Element}
+df_long <- df_join_clean %>% 
+  pivot_longer(cols = As : Zn,
+               names_to = "element",
+               values_to = "concentration")
+
+names(df_long)
+
+df_long %>% 
+  filter(paint != "unknown") %>%
+  filter(element != "Hg") %>% 
+  filter(element != "Cd") %>% 
+  ggplot(aes(PropertyAge, concentration, colour = paint)) +
+  geom_smooth(level = 0.95) +
+  scale_x_reverse() +
+  scale_colour_brewer(palette = "Set1") +
+  coord_cartesian(xlim = c(120, 0)) +
+  facet_wrap(~element,
+             scales = "free_y") +
+  labs(x = "Property Age (year)",
+       y="Element Concentration (mg/kg)") +
+  theme(panel.border = element_blank(), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(colour = "black"),
+        text=element_text(family="Helvetica"))
+```
+

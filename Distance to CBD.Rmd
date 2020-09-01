@@ -1,0 +1,733 @@
+---
+title: "Distance to CBD"
+author: "Xiaochi"
+date: "04/03/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = TRUE,
+	warning = TRUE
+)
+library(tidyverse)
+library(mapview)
+library(sf)
+library(reprex)
+library(skimr)
+theme_set(theme_bw())
+```
+
+# Element ~ Distance to CBD
+
+```{r}
+df_newly_cleaned <- read_rds("../data_output/df_vege.rds")
+```
+
+
+```{r}
+sf_newly_cleaned <- st_as_sf(df_newly_cleaned,
+                    coords = c("Longitude", "Latitude"),
+                    crs = 4326,
+                    remove = FALSE)
+
+sf_Sydney_CBD <- st_read("../data/Sydney CBD.kml")
+sf_Sydney_CBD <- st_combine(sf_Sydney_CBD)
+sf_Sydney_samples <- sf_newly_cleaned %>% 
+  filter(sua_name == "Sydney")
+df_Sydney_samples <- df_newly_cleaned %>% 
+  filter(sua_name == "Sydney")
+df_Sydney_samples <- df_Sydney_samples %>% 
+  mutate(distance_to_CBD = as.numeric(st_distance(sf_Sydney_samples, 
+                                                  sf_Sydney_CBD, 
+                                                  by_element = FALSE)),
+         # unit m to km
+         distance_to_CBD = distance_to_CBD/1000)
+
+
+sf_Melbourne_CBD <- st_read("../data/Melbourne CBD.kml")
+sf_Melbourne_CBD <- st_combine(sf_Melbourne_CBD)
+sf_Melbourne_samples <- sf_newly_cleaned %>% 
+  filter(sua_name == "Melbourne")
+df_Melbourne_samples <- df_newly_cleaned %>% 
+  filter(sua_name == "Melbourne")
+df_Melbourne_samples <- df_Melbourne_samples %>% 
+  mutate(distance_to_CBD = as.numeric(st_distance(sf_Melbourne_samples, 
+                                                  sf_Melbourne_CBD, 
+                                                  by_element = FALSE)),
+         # unit m to km
+         distance_to_CBD = distance_to_CBD/1000)
+
+
+sf_Brisbane_CBD <- st_read("../data/Brisbane CBD.kml")
+sf_Brisbane_CBD <- st_combine(sf_Brisbane_CBD)
+sf_Brisbane_samples <- sf_newly_cleaned %>% 
+  filter(sua_name == "Brisbane")
+df_Brisbane_samples <- df_newly_cleaned %>% 
+  filter(sua_name == "Brisbane")
+df_Brisbane_samples <- df_Brisbane_samples %>% 
+  mutate(distance_to_CBD = as.numeric(st_distance(sf_Brisbane_samples, 
+                                                  sf_Brisbane_CBD, 
+                                                  by_element = FALSE)),
+         # unit m to km
+         distance_to_CBD = distance_to_CBD/1000)
+
+df_3cities <- bind_rows(df_Sydney_samples,
+                        df_Melbourne_samples,
+                        df_Brisbane_samples)
+
+names(df_3cities)
+write_rds(df_3cities, "../data_output/df_3cities.rds")
+```
+
+```{r}
+df_3cities <- read_rds("../data_output/df_3cities.rds")
+As_guide <- 100
+Cd_guide <- 20
+Cr_guide <- 100
+Cu_guide <- 6000
+Pb_guide <- 300
+Mn_guide <- 3800
+Ni_guide <- 400
+Zn_guide <- 7400
+```
+
+
+
+```{r}
+df_3cities %>% 
+  group_by(sua_name) %>% 
+  
+```
+
+
+```{r}
+df_3cities %>% 
+  count(sua_name)
+
+names(df_3cities)
+```
+
+```{r}
+df_3cities_far <- df_3cities %>% 
+  filter(distance_to_CBD >= 10) %>% 
+  group_by(sua_name) %>%
+  select(distance_to_CBD) %>% 
+  skim()
+
+df_3cities_far <- df_3cities %>% 
+  filter(distance_to_CBD >= 10)
+
+df_3cities %>% 
+  count(sua_name)
+
+df_3cities_far %>% 
+  group_by(sua_name) %>% 
+  summarise(ci = list(mean_cl_boot(Pb))) %>% 
+  unnest(cols = c(ci))
+```
+
+
+
+
+
+## Pb
+
+```{r}
+Pb_dis <- df_3cities %>% 
+  ggplot(aes(distance_to_CBD, Pb, colour = sua_name)) +
+  #geom_point(alpha = 0.5) +
+  geom_smooth(level = 0.95, size = 1) +
+  #stat_regline_equation() +
+  geom_hline(aes(yintercept = Pb_guide),
+             linetype = "dashed",
+             size = 1,
+             colour = "black",
+             show.legend =FALSE) +
+  geom_text(aes(x = 65, y = 350),
+            label= "Australian guideline for soil Pb = 300 mg/kg",
+            colour = "black") +
+  scale_colour_brewer(palette = "Set1",
+                      name = NULL,
+                      breaks = c("Sydney", "Melbourne", "Brisbane"),
+                      labels=c("n = 6813 in Sydney", 
+                               "n = 4111 in Melbourne",
+                               "n = 845 in Brisbane")) +
+  scale_y_continuous(breaks = seq(0, 700, by = 100), expand = c(0, 0)) +
+  scale_x_continuous(breaks = seq(0, 85, by = 5), expand = c(0, 0)) +
+  # scale_x_reverse(breaks = seq(0, 120, by = 20),
+  #                 expand = c(0, 0)) +
+  coord_cartesian(ylim = c(0, 700)) +
+  labs(x = "Distance to CBD (km)",
+       y="Pb Concentration (mg/kg)") +
+  theme(panel.border = element_blank(), 
+        panel.grid = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(colour = "black"),
+        text = element_text(family="Helvetica"),
+        legend.position = "bottom")
+Pb_dis
+```
+
+
+```{r}
+ggsave("../fig_output/Distance/Pb.png", Pb_dis, height = 5, width = 7)
+```
+
+## As
+
+```{r}
+As_dis <- df_3cities %>% 
+  ggplot(aes(distance_to_CBD, As, colour = sua_name)) +
+  geom_smooth(level = 0.95, size = 1) +
+  # geom_hline(aes(yintercept = As_guide),
+  #            linetype = "dashed",
+  #            size = 1,
+  #            colour = "black",
+  #            show.legend =FALSE) +
+  geom_text(aes(x = 65, y = 22),
+            label= "Australian guideline for soil As = 100 mg/kg",
+            colour = "black") +
+  scale_colour_brewer(palette = "Set1",
+                      name = NULL,
+                      breaks = c("Sydney", "Melbourne", "Brisbane"),
+                      labels=c("n = 6813 in Sydney", 
+                               "n = 4111 in Melbourne",
+                               "n = 845 in Brisbane")) +
+  scale_y_continuous(breaks = seq(0, 25, by = 5), expand = c(0, 0)) +
+  scale_x_continuous(breaks = seq(0, 85, by = 5), expand = c(0, 0)) +
+  coord_cartesian(ylim = c(0, 25)) +
+  labs(x = "Distance to CBD (km)",
+       y="As Concentration (mg/kg)") +
+  theme(panel.border = element_blank(), 
+        panel.grid = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(colour = "black"),
+        text = element_text(family="Helvetica"),
+        legend.position = "bottom")
+As_dis
+```
+
+
+```{r}
+ggsave("../fig_output/Distance/As.png", As_dis, height = 5, width = 7)
+```
+
+
+## Cr
+
+```{r}
+Cr_dis <- df_3cities %>% 
+  ggplot(aes(distance_to_CBD, Cr, colour = sua_name)) +
+  geom_smooth(level = 0.95, size = 1) +
+  geom_hline(aes(yintercept = Cr_guide),
+             linetype = "dashed",
+             size = 1,
+             colour = "black",
+             show.legend =FALSE) +
+  geom_text(aes(x = 65, y = 110),
+            label= "Australian guideline for soil Cr = 100 mg/kg",
+            colour = "black") +
+  scale_colour_brewer(palette = "Set1",
+                      name = NULL,
+                      breaks = c("Sydney", "Melbourne", "Brisbane"),
+                      labels=c("n = 6813 in Sydney", 
+                               "n = 4111 in Melbourne",
+                               "n = 845 in Brisbane")) +
+  scale_y_continuous(breaks = seq(0, 200, by = 20), expand = c(0, 0)) +
+  scale_x_continuous(breaks = seq(0, 85, by = 5), expand = c(0, 0)) +
+  coord_cartesian(ylim = c(0, 200)) +
+  labs(x = "Distance to CBD (km)",
+       y="Cr Concentration (mg/kg)") +
+  theme(panel.border = element_blank(), 
+        panel.grid = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(colour = "black"),
+        text = element_text(family="Helvetica"),
+        legend.position = "bottom")
+Cr_dis
+```
+
+
+```{r}
+ggsave("../fig_output/Distance/Cr.png", Cr_dis, height = 5, width = 7)
+```
+
+## Cu
+
+```{r}
+Cu_dis <- df_3cities %>% 
+  ggplot(aes(distance_to_CBD, Cu, colour = sua_name)) +
+  geom_smooth(level = 0.95, size = 1) +
+  # geom_hline(aes(yintercept = Cu_guide),
+  #            linetype = "dashed",
+  #            size = 1,
+  #            colour = "black",
+  #            show.legend =FALSE) +
+  geom_text(aes(x = 65, y = 90),
+            label= "Australian guideline for soil Cu = 6,000 mg/kg",
+            colour = "black") +
+  scale_colour_brewer(palette = "Set1",
+                      name = NULL,
+                      breaks = c("Sydney", "Melbourne", "Brisbane"),
+                      labels=c("n = 6813 in Sydney", 
+                               "n = 4111 in Melbourne",
+                               "n = 845 in Brisbane")) +
+  scale_y_continuous(breaks = seq(0, 100, by = 10), expand = c(0, 0)) +
+  scale_x_continuous(breaks = seq(0, 85, by = 5), expand = c(0, 0)) +
+  coord_cartesian(ylim = c(0, 100)) +
+  labs(x = "Distance to CBD (km)",
+       y="Cu Concentration (mg/kg)") +
+  theme(panel.border = element_blank(), 
+        panel.grid = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(colour = "black"),
+        text = element_text(family="Helvetica"),
+        legend.position = "bottom")
+Cu_dis
+```
+
+
+```{r}
+ggsave("../fig_output/Distance/Cu.png", Cu_dis, height = 5, width = 7)
+```
+
+## Mn
+
+```{r}
+Mn_dis <- df_3cities %>% 
+  ggplot(aes(distance_to_CBD, Mn, colour = sua_name)) +
+  geom_smooth(level = 0.95, size = 1) +
+  # geom_hline(aes(yintercept = Cu_guide),
+  #            linetype = "dashed",
+  #            size = 1,
+  #            colour = "black",
+  #            show.legend =FALSE) +
+  geom_text(aes(x = 65, y = 550),
+            label= "Australian guideline for soil Mn = 3,800 mg/kg",
+            colour = "black") +
+  scale_colour_brewer(palette = "Set1",
+                      name = NULL,
+                      breaks = c("Sydney", "Melbourne", "Brisbane"),
+                      labels=c("n = 6813 in Sydney", 
+                               "n = 4111 in Melbourne",
+                               "n = 845 in Brisbane")) +
+  scale_y_continuous(breaks = seq(0, 700, by = 100), expand = c(0, 0)) +
+  scale_x_continuous(breaks = seq(0, 85, by = 5), expand = c(0, 0)) +
+  coord_cartesian(ylim = c(0, 700)) +
+  labs(x = "Distance to CBD (km)",
+       y="Mn Concentration (mg/kg)") +
+  theme(panel.border = element_blank(), 
+        panel.grid = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(colour = "black"),
+        text = element_text(family="Helvetica"),
+        legend.position = "bottom")
+Mn_dis
+```
+
+
+```{r}
+ggsave("../fig_output/Distance/Mn.png", Mn_dis, height = 5, width = 7)
+```
+
+## Ni
+
+```{r}
+Ni_dis <- df_3cities %>% 
+  ggplot(aes(distance_to_CBD, Ni, colour = sua_name)) +
+  geom_smooth(level = 0.95, size = 1) +
+  # geom_hline(aes(yintercept = Cu_guide),
+  #            linetype = "dashed",
+  #            size = 1,
+  #            colour = "black",
+  #            show.legend =FALSE) +
+  geom_text(aes(x = 65, y = 23),
+            label= "Australian guideline for soil Ni = 400 mg/kg",
+            colour = "black") +
+  scale_colour_brewer(palette = "Set1",
+                      name = NULL,
+                      breaks = c("Sydney", "Melbourne", "Brisbane"),
+                      labels=c("n = 6813 in Sydney", 
+                               "n = 4111 in Melbourne",
+                               "n = 845 in Brisbane")) +
+  scale_y_continuous(breaks = seq(0, 30, by = 5), expand = c(0, 0)) +
+  scale_x_continuous(breaks = seq(0, 85, by = 5), expand = c(0, 0)) +
+  coord_cartesian(ylim = c(0, 30)) +
+  labs(x = "Distance to CBD (km)",
+       y="Ni Concentration (mg/kg)") +
+  theme(panel.border = element_blank(), 
+        panel.grid = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(colour = "black"),
+        text = element_text(family="Helvetica"),
+        legend.position = "bottom")
+Ni_dis
+```
+
+
+```{r}
+ggsave("../fig_output/Distance/Ni.png", Ni_dis, height = 5, width = 7)
+```
+
+## Zn
+
+```{r}
+Zn_dis <- df_3cities %>% 
+  ggplot(aes(distance_to_CBD, Zn, colour = sua_name)) +
+  geom_smooth(level = 0.95, size = 1) +
+  # geom_hline(aes(yintercept = Zn_guide),
+  #            linetype = "dashed",
+  #            size = 1,
+  #            colour = "black",
+  #            show.legend =FALSE) +
+  geom_text(aes(x = 65, y =1000),
+            label= "Australian guideline for soil Zn = 7,400 mg/kg",
+            colour = "black") +
+  scale_colour_brewer(palette = "Set1",
+                      name = NULL,
+                      breaks = c("Sydney", "Melbourne", "Brisbane"),
+                      labels=c("n = 6813 in Sydney", 
+                               "n = 4111 in Melbourne",
+                               "n = 845 in Brisbane")) +
+  scale_y_continuous(breaks = seq(0, 1200, by = 200), expand = c(0, 0)) +
+  scale_x_continuous(breaks = seq(0, 85, by = 5), expand = c(0, 0)) +
+  coord_cartesian(ylim = c(0, 1100)) +
+  labs(x = "Distance to CBD (km)",
+       y="Zn Concentration (mg/kg)") +
+  theme(panel.border = element_blank(), 
+        panel.grid = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(colour = "black"),
+        text = element_text(family="Helvetica"),
+        legend.position = "bottom")
+Zn_dis
+```
+
+
+```{r}
+ggsave("../fig_output/Distance/Zn.png", Zn_dis, height = 5, width = 7)
+```
+
+
+# 3 cities
+
+```{r}
+df_3cities <- read_rds("../data_output/df_3cities.rds")
+As_guide <- 100
+Cd_guide <- 20
+Cr_guide <- 100
+Cu_guide <- 6000
+Pb_guide <- 300
+Mn_guide <- 3800
+Ni_guide <- 400
+Zn_guide <- 7400
+```
+
+
+```{r}
+df_3cities %>% 
+  count(sua_name) %>% 
+  mutate(pct = n / 17256)
+```
+
+```{r}
+537/17256
+206/17256
+17256-15883
+1373/17256
+692/17256
+```
+
+
+```{r}
+df_3cities_10km %>% 
+  filter(paint != "unknown") %>%
+  ggplot(aes(PropertyAge, Pb, colour = sua_name)) +
+  #geom_point(alpha = 0.5) +
+  geom_smooth(level = 0.95) +
+  scale_colour_brewer(palette = "Set1",
+                      name = NULL,
+                      breaks = c("Sydney", "Melbourne", "Brisbane"),
+                      labels=c("n = 3237 in Sydney", 
+                               "n = 2339 in Melbourne",
+                               "n = 383 in Brisbane")) +
+  #stat_regline_equation() +
+  geom_hline(aes(yintercept = Pb_guide),
+             linetype = "dashed",
+             size = 1,
+             colour = "black",
+             show.legend =FALSE) +
+  geom_text(aes(x = 30, y = 350),
+            label= "Australian guideline for soil Pb = 300 mg/kg",
+            colour = "black") +
+  scale_y_continuous(breaks = seq(0, 800, by = 100), expand = c(0, 0)) +
+  scale_x_reverse(breaks = seq(0, 120, by = 20), expand = c(0, 0)) +
+  coord_cartesian(ylim = c(0, 800), xlim = c(120, 0)) +
+  labs(x = "Property Age (year)",
+       y="Pb Concentration (mg/kg)") +
+  theme(panel.border = element_blank(), 
+        panel.grid = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(colour = "black"),
+        text = element_text(family="Helvetica"),
+        legend.position = "bottom")
+```
+
+
+
+
+
+## In 10 km
+
+```{r}
+df_3cities_10km <- df_3cities %>% 
+  filter(distance_to_CBD < 10)
+
+df_3cities_10km %>% 
+  filter(paint != "unknown") %>%
+  count(sua_name)
+```
+
+
+
+
+```{r}
+df_3cities_10km %>% 
+  filter(paint != "unknown") %>%
+  ggplot(aes(PropertyAge, Pb, colour = sua_name)) +
+  #geom_point(alpha = 0.5) +
+  geom_smooth(level = 0.95) +
+  scale_colour_brewer(palette = "Set1",
+                      name = NULL,
+                      breaks = c("Sydney", "Melbourne", "Brisbane"),
+                      labels=c("n = 3237 in Sydney", 
+                               "n = 2339 in Melbourne",
+                               "n = 383 in Brisbane")) +
+  #stat_regline_equation() +
+  geom_hline(aes(yintercept = Pb_guide),
+             linetype = "dashed",
+             size = 1,
+             colour = "black",
+             show.legend =FALSE) +
+  geom_text(aes(x = 30, y = 350),
+            label= "Australian guideline for soil Pb = 300 mg/kg",
+            colour = "black") +
+  scale_y_continuous(breaks = seq(0, 800, by = 100), expand = c(0, 0)) +
+  scale_x_reverse(breaks = seq(0, 120, by = 20), expand = c(0, 0)) +
+  coord_cartesian(ylim = c(0, 800), xlim = c(120, 0)) +
+  labs(x = "Property Age (year)",
+       y="Pb Concentration (mg/kg)") +
+  theme(panel.border = element_blank(), 
+        panel.grid = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(colour = "black"),
+        text = element_text(family="Helvetica"),
+        legend.position = "bottom")
+```
+
+
+```{r}
+df_3cities_10km %>% 
+  filter(paint != "unknown") %>%
+  filter(sua_name == "Sydney") %>%
+  count(paint)
+  
+plot_Sydney_10 <- df_3cities_10km %>% 
+  filter(paint != "unknown") %>%
+  filter(sua_name == "Sydney") %>% 
+  ggplot(aes(PropertyAge, Pb, colour = paint)) +
+  geom_smooth(level = 0.95) +
+  geom_hline(aes(yintercept = Pb_guide),
+             linetype = "dashed",
+             size = 1,
+             colour = "black",
+             show.legend =FALSE) +
+  # geom_text(aes(x = 30, y = 350),
+  #           label= "Australian guideline for soil Pb = 300 mg/kg",
+  #           colour = "black") +
+  scale_colour_brewer(palette = "Dark2",
+                      name = NULL,
+                      breaks = c("painted", "unpainted"),
+                      labels=c("n = 2480 painted",
+                               "n = 793 unpainted")) +
+  scale_y_continuous(breaks = seq(0, 800, by = 100), expand = c(0, 0)) +
+  scale_x_reverse(breaks = seq(0, 120, by = 20), expand = c(0, 0)) +
+  coord_cartesian(ylim = c(0, 800), xlim = c(120, 0)) +
+  labs(x = "Property Age (year)",
+       y="Pb Concentration (mg/kg)",
+       title = "Area within 10 km from CBD in Sydney") +
+  #facet_grid(rows = vars(sua_name)) +
+  theme(panel.border = element_blank(), 
+        panel.grid = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(colour = "black"),
+        text = element_text(family="Helvetica"),
+        legend.position = "bottom")
+
+plot_Sydney_10
+```
+
+
+```{r}
+df_3cities_10km %>% 
+  filter(paint != "unknown") %>%
+  filter(sua_name == "Melbourne") %>%
+  count(paint)
+  
+plot_Melbourne_10 <- df_3cities_10km %>% 
+  filter(paint != "unknown") %>%
+  filter(sua_name == "Melbourne") %>% 
+  ggplot(aes(PropertyAge, Pb, colour = paint)) +
+  geom_smooth(level = 0.95) +
+  geom_hline(aes(yintercept = Pb_guide),
+             linetype = "dashed",
+             size = 1,
+             colour = "black",
+             show.legend =FALSE) +
+  # geom_text(aes(x = 30, y = 350),
+  #           label= "Australian guideline for soil Pb = 300 mg/kg",
+  #           colour = "black") +
+  scale_colour_brewer(palette = "Dark2",
+                      name = NULL,
+                      breaks = c("painted", "unpainted"),
+                      labels=c("n = 1808 painted",
+                               "n = 531 unpainted")) +
+  scale_y_continuous(breaks = seq(0, 800, by = 100), expand = c(0, 0)) +
+  scale_x_reverse(breaks = seq(0, 120, by = 20), expand = c(0, 0)) +
+  coord_cartesian(ylim = c(0, 800), xlim = c(120, 0)) +
+  labs(x = "Property Age (year)",
+       y="Pb Concentration (mg/kg)",
+       title = "Area within 10 km from CBD in Melbourne") +
+  #facet_grid(rows = vars(sua_name)) +
+  theme(panel.border = element_blank(), 
+        panel.grid = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(colour = "black"),
+        text = element_text(family="Helvetica"),
+        legend.position = "bottom")
+plot_Melbourne_10
+```
+
+```{r}
+df_3cities_10km %>% 
+  filter(paint != "unknown") %>%
+  filter(sua_name == "Brisbane") %>%
+  count(paint)
+  
+plot_Brisbane_10 <- df_3cities_10km %>% 
+  filter(paint != "unknown") %>%
+  filter(sua_name == "Brisbane") %>% 
+  ggplot(aes(PropertyAge, Pb, colour = paint)) +
+  geom_smooth(level = 0.95) +
+  geom_hline(aes(yintercept = Pb_guide),
+             linetype = "dashed",
+             size = 1,
+             colour = "black",
+             show.legend =FALSE) +
+  # geom_text(aes(x = 30, y = 350),
+  #           label= "Australian guideline for soil Pb = 300 mg/kg",
+  #           colour = "black") +
+  scale_colour_brewer(palette = "Dark2",
+                      name = NULL,
+                      breaks = c("painted", "unpainted"),
+                      labels=c("n = 333 painted",
+                               "n = 50 unpainted")) +
+  scale_y_continuous(breaks = seq(0, 800, by = 100), expand = c(0, 0)) +
+  scale_x_reverse(breaks = seq(0, 120, by = 20), expand = c(0, 0)) +
+  coord_cartesian(ylim = c(0, 800), xlim = c(120, 0)) +
+  labs(x = "Property Age (year)",
+       y="Pb Concentration (mg/kg)",
+       title = "Area within 10 km from CBD in Brisbane") +
+  #facet_grid(rows = vars(sua_name)) +
+  theme(panel.border = element_blank(), 
+        panel.grid = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(colour = "black"),
+        text = element_text(family="Helvetica"),
+        legend.position = "bottom")
+
+plot_Brisbane_10
+```
+
+
+```{r fig.width=4}
+library(ggpubr)
+
+ggarrange(Pb_dis,
+          ggarrange(plot_Sydney_10, plot_Melbourne_10, plot_Brisbane_10,
+                    ncol = 3, labels = c("B", "C", "D")),
+          nrow = 2, labels = "A"
+)
+```
+
+
+
+```{r}
+for (city in unique(df_3cities_10km$sua_name)) {
+  p <- df_3cities_10km %>% 
+    filter(paint != "unknown") %>%
+    filter(sua_name == city) %>% 
+    ggplot(aes(PropertyAge, Pb, colour = paint)) +
+    #geom_point(alpha = 0.5) +
+    geom_smooth(level = 0.95) +
+    #stat_regline_equation() +
+    geom_hline(aes(yintercept = Pb_guide),
+               linetype = "dashed",
+               size = 1,
+               colour = "black",
+               show.legend =FALSE) +
+    geom_text(aes(x = 30, y = 350),
+              label= "Australian guideline for soil Pb = 300 mg/kg",
+              colour = "black") +
+    # scale_colour_brewer(palette = "Set1",
+    #                     name = NULL,
+    #                     breaks = c("painted", "unpainted"),
+    #                     labels=c("n =nrow(.[paint == 'painted'])}", 
+    #                              "n = {nrow(.[paint == 'unpainted'])}")) +
+    scale_y_continuous(breaks = seq(0, 800, by = 100), expand = c(0, 0)) +
+    scale_x_reverse(breaks = seq(0, 120, by = 20), expand = c(0, 0)) +
+    coord_cartesian(ylim = c(0, 800), xlim = c(120, 0)) +
+    labs(x = "Property Age (year)",
+         y="Pb Concentration (mg/kg)") +
+    facet_grid(rows = vars(sua_name), scales = "free_y") +
+    theme(panel.border = element_blank(), 
+          panel.grid = element_blank(),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(), 
+          axis.line = element_line(colour = "black"),
+          axis.text = element_text(colour = "black"),
+          text = element_text(family="Helvetica"),
+          legend.position = "bottom")
+  
+  print(p)
+}
+```
+
