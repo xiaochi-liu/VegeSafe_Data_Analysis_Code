@@ -1,0 +1,769 @@
+---
+title: "Data Cleaning"
+author: "Xiaochi"
+date: "19/05/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(stringr)
+library(sf)
+library(mapview)
+library(skimr)
+theme_set(theme_bw())
+
+library(ggmap)
+#Set your API Key
+ggmap::register_google(key = "AIzaSyC0jviGocL_Wdw5C7mw8MqIrtpyci3VZ58")
+```
+
+
+
+# Data Import
+
+```{r}
+df_VegeSafe <- read_csv("../data/18_May_2020_Export_ALL.csv")
+df_VegeSafe %>% 
+  count(OwnerAddress)
+```
+
+# Spatial Clean
+
+```{r}
+sf_VegeSafe <- st_as_sf(df_VegeSafe, 
+                        coords = c("Longitude", "Latitude"), 
+                        crs = 4283,
+                        remove = FALSE)
+
+mapview(sf_VegeSafe)
+
+sf_VegeSafe <- st_transform(sf_VegeSafe, 4283)
+```
+
+## Coordinates 
+
+```{r geocode}
+df_address <- df_VegeSafe %>% 
+  distinct(OwnerAddress) %>% 
+  mutate_geocode(OwnerAddress)
+
+write_rds(df_address, "../data_output/address_ALL.rds")
+```
+
+```{r sf_no_lonlat}
+df_no_lonlat <- df_address %>%
+  filter(is.na(lon))
+
+sf_no_lonlat <- df_VegeSafe %>% 
+  filter(OwnerAddress %in% df_no_lonlat$OwnerAddress) %>% 
+  st_as_sf(coords = c("Longitude", "Latitude"),
+           crs = 4326,
+           remove = FALSE)
+
+mapview(sf_no_lonlat)
+```
+
+
+```{r sf_has_lonlat}
+df_has_lonlat <- df_address %>% 
+  filter(!is.na(lon))
+
+sf_has_lonlat <- df_has_lonlat %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326,
+           remove = FALSE)
+
+mapview(sf_has_lonlat)
+```
+
+
+
+
+## add boundry
+
+```{r Data Import}
+sf_sua <- st_read("/Users/liuxiaochi/Documents/GeoData/sua_2016_aust_shape/SUA_2016_AUST.shp")
+names(sf_sua)
+
+sf_sa3 <- st_read("/Users/liuxiaochi/Documents/GeoData/sa3_2016_aust_shape/SA3_2016_AUST.shp")
+names(sf_sa3)
+
+sf_sa2 <- st_read("/Users/liuxiaochi/Documents/GeoData/sa2_2016_aust_shape/SA2_2016_AUST.shp")
+```
+
+```{r join}
+sf_join <- sf_VegeSafe %>% 
+  st_join(sf_sua) %>% 
+  dplyr::select(-AREASQKM16) %>% 
+  st_join(sf_sa3) %>% 
+  dplyr::select(-SA4_CODE16, 
+                -SA4_NAME16, 
+                -GCC_CODE16, 
+                -GCC_NAME16, 
+                -STE_CODE16, 
+                -STE_NAME16, 
+                -AREASQKM16) %>% 
+  st_join(sf_sa2) %>% 
+  dplyr::select(-SA3_CODE16.y,
+                -SA3_NAME16.y,
+                -SA4_CODE16,
+                -SA4_NAME16,
+                -GCC_CODE16,
+                -GCC_NAME16,
+                -STE_CODE16,
+                -STE_NAME16,
+                -AREASQKM16)
+
+
+sf_join <- sf_join %>% 
+  rename(sua_code = "SUA_CODE16",
+         sua_name = "SUA_NAME16",
+         sa3_code = "SA3_CODE16.x",
+         sa3_name = "SA3_NAME16.x",
+         sa2_main = "SA2_MAIN16",
+         sa2_5dig = "SA2_5DIG16",
+         sa2_name = "SA2_NAME16")
+```
+
+## wrong position
+
+```{r}
+df_join <- st_drop_geometry(sf_join)
+
+df_wrong_position <- df_join %>% 
+  filter(is.na(sua_name)) %>% 
+  distinct(OwnerAddress) %>% 
+  mutate_geocode(OwnerAddress)
+
+sf_wrong_position <- st_as_sf(df_wrong_position,
+                              coords = c("lon", "lat"),
+                              crs = 4326,
+                              remove = FALSE)
+
+mapview(sf_wrong_position)
+# remove the samples ouside Australia
+sf_wrong_position_clean <- sf_wrong_position %>% 
+  filter(OwnerAddress != "20 Glencairn Street, North East Valley, Dunedin 9010, New Zealand")
+mapview(sf_wrong_position_clean)
+
+df_wrong_position_clean <- st_drop_geometry(sf_wrong_position)
+```
+
+## modify lon lat
+
+```{r}
+df_coor <- df_join %>% 
+  filter(is.na(sua_name)) %>% 
+  left_join(df_wrong_position_clean)
+
+df_join[is.na(df_join$sua_name), "Longitude"] <- df_coor$lon
+df_join[is.na(df_join$sua_name), "Latitude"] <- df_coor$lat
+```
+
+## re-add boundry
+
+```{r}
+names(df_join)
+
+df_join <- df_join %>% 
+  select(- sua_code, - sua_name, 
+         - sa3_code, - sa3_name,
+         - sa2_main, - sa2_5dig, - sa2_name)
+
+sf_join <- st_as_sf(df_join, 
+                    coords = c("Longitude", "Latitude"), 
+                    crs = 4326,
+                    remove = FALSE)
+
+sf_join <- st_transform(sf_join, 4283)
+```
+
+```{r}
+sf_join <- sf_join %>% 
+  st_join(sf_sua) %>% 
+  dplyr::select(-AREASQKM16) %>% 
+  st_join(sf_sa3) %>% 
+  dplyr::select(-SA4_CODE16, 
+                -SA4_NAME16, 
+                -GCC_CODE16, 
+                -GCC_NAME16, 
+                -STE_CODE16, 
+                -STE_NAME16, 
+                -AREASQKM16) %>% 
+  st_join(sf_sa2) %>% 
+  dplyr::select(-SA3_CODE16.y,
+                -SA3_NAME16.y,
+                -SA4_CODE16,
+                -SA4_NAME16,
+                -GCC_CODE16,
+                -GCC_NAME16,
+                -STE_CODE16,
+                -STE_NAME16,
+                -AREASQKM16)
+
+
+sf_join <- sf_join %>% 
+  rename(sua_code = "SUA_CODE16",
+         sua_name = "SUA_NAME16",
+         sa3_code = "SA3_CODE16.x",
+         sa3_name = "SA3_NAME16.x",
+         sa2_main = "SA2_MAIN16",
+         sa2_5dig = "SA2_5DIG16",
+         sa2_name = "SA2_NAME16")
+```
+
+## spatial filter
+
+remove 5 samples in New Zealand: 17343 to 17338
+
+```{r}
+df_NewZealand <- sf_join %>% 
+  st_drop_geometry() %>% 
+  filter(is.na(sua_name))
+
+write_csv(df_NewZealand, "../data_output/Samples_in_NewZealand.csv")
+
+sf_join_spatial <- sf_join %>% 
+  filter(!is.na(sua_name))
+
+skim(sf_join_spatial)
+```
+
+
+```{r}
+write_rds(sf_join_spatial, "../data_output/sf_join_spatial.rds")
+sf_join_spatial <- read_rds("../data_output/sf_join_spatial.rds")
+```
+
+# Attribute Clean
+
+```{r}
+sf_join_spatial <- sf_join_spatial %>% 
+  mutate(
+    create_date = str_split(CreatedDate, " "),
+    create_date = map_chr(create_date, 1),
+    create_date = mdy(create_date)
+    ) %>% 
+  mutate(
+    create_date_monthly = format(create_date, "%Y-%m"),
+    create_date_yearly = format(create_date, "%Y")
+    ) %>% 
+  rename(construction = "Construction") %>% 
+  rename(sample_location = "Location around house")
+```
+
+## Location
+
+```{r}
+sf_join_spatial %>% 
+  select(sample_location)
+```
+
+```{r sample_location match}
+frontyard <- c("front", "verge", "median", "frontyard")
+frontyard_match <- str_c(frontyard, collapse = "|")
+
+backyard <- c("back", "rear", "backyard", "yard", "grass")
+backyard_match <- str_c(backyard, collapse = "|")
+
+dripline <- c("dripline", "drip", "line", "roof", "gutter", "tap" )
+dripline_match <- str_c(dripline, collapse = "|")
+
+veggiepatch <- c("veggie", "patch", "vege", "vegetable", "herb", "planter", "fruit", "tomato", "banana", "veg", "raised", "vegie", "greenhouse", "lemon", "lime", "potato", "onions", "carrots", "peppers", "lettuce", "broccoli", "apple", "orange", "mandarin", "grapefruit", "pear", "dill", "basil", "chives", "coriander", "fennel", "mint", "parsley", "sage", "vegy", "pumpkin", "cucumber", "rhubarb", "passionfruit", "strawberry", "blueberry", "tree", "bed")
+veggiepatch_match <- str_c(veggiepatch, collapse = "|")
+
+compost <- c("compost", "scraps")
+compost_match <- str_c(compost, collapse = "|")
+
+chickencoops <- c("coop", "chick", "chook", "chicken", "run", "hen house")
+chickencoops_match<- str_c(chickencoops, collapse = "|")
+
+side <- c("side")
+side_match <- str_c(side, collapse = "|")
+```
+
+```{r unknown location}
+unknown_category <- read_csv("../data/unknown categories_ci.csv")
+
+unknown_category <- unknown_category %>% 
+  rename(category = "X3")
+
+unknown_category %>% 
+  count(category)
+```
+
+
+```{r unknown location match}
+unknown_backyard <- unknown_category %>% 
+  filter(category == "backyard")
+unknown_backyard <- unknown_backyard$sample_location
+unknown_backyard_match <- str_c(unknown_backyard, collapse = "|")
+
+
+unknown_dripline <- unknown_category %>% 
+  filter(category == "dripline")
+unknown_dripline <- unknown_dripline$sample_location
+unknown_dripline_match <- str_c(unknown_dripline, collapse = "|")
+
+unknown_frontyard <- unknown_category %>% 
+  filter(category == "frontyard")
+unknown_frontyard <- unknown_frontyard$sample_location
+unknown_frontyard_match <- str_c(unknown_frontyard, collapse = "|")
+
+unknown_veggiepatch <- unknown_category %>% 
+  filter(category == "veggiepatch")
+unknown_veggiepatch <- unknown_veggiepatch$sample_location
+unknown_veggiepatch_match <- str_c(unknown_veggiepatch, collapse = "|")
+```
+
+
+```{r clean sample location}
+test <- sf_join_spatial %>% 
+  # lowercase
+  mutate(sample_location = tolower(sample_location)) %>%
+  # detect matches
+  mutate(
+    sample_location_category = case_when(
+      str_detect(sample_location, frontyard_match) ~ "frontyard",
+      str_detect(sample_location, backyard_match) ~ "backyard",
+      str_detect(sample_location, dripline_match) ~ "dripline",
+      str_detect(sample_location, veggiepatch_match) ~ "veggiepatch",
+      str_detect(sample_location, compost_match) ~ "compost",
+      str_detect(sample_location, chickencoops_match) ~ "chickencoop",
+      str_detect(sample_location, side_match) ~ "side",
+      # unknown
+      str_detect(sample_location, unknown_backyard_match) ~ "backyard",
+      str_detect(sample_location, unknown_frontyard_match) ~ "frontyard",
+      str_detect(sample_location, unknown_dripline_match) ~ "dripline",
+      str_detect(sample_location, unknown_veggiepatch_match) ~ "veggiepatch"
+      # str_detect(location_around_house, "\\d") ~ "unknown"
+    )) %>% 
+  mutate(
+    sample_location_category = ifelse(is.na(sample_location_category),
+                                      "unknown",
+                                      sample_location_category)
+    )
+
+test %>%
+  dplyr::select(sample_location, sample_location_category) %>% 
+  count(sample_location_category, sort = TRUE)
+```
+
+```{r}
+names(test)
+
+sf_join_spatial_location <- test
+```
+
+## Materials
+
+```{r}
+sf_join_spatial_location %>% 
+  count(construction, sort = TRUE)
+```
+
+```{r matirials match}
+brick <- c("bric", "brick", "double brick", "concrete", "veneer", "cement", "render", "rendered", "single brick", "morter", "besser block", "besa-blocks", "stucco", "hebel", "mud brick", "red brick", "brickwork", "pseudo-brick")
+brick_match <- str_c(brick, collapse = "|")
+
+timber <- c("timber", "wood", "weatherboard", "weatherbpard", "cladding", "hardboard", "hardiplank", "hardi plank", "hardwood", "clad", "pine", "chamberboard", "log cabin")
+timber_match <- str_c(timber, collapse = "|")
+
+fibro <- c("fibro", "fribo", "sheeting", "asbestos")
+fibro_match <- str_c(fibro, collapse = "|")
+
+metal <- c("metal", "demountable", "colourbond", "colour bond", "colorbond", "corrugated", "shipping containter", "aluminium", "steel", "zincalume", "iron", "stainless steal") # tin
+metal_match <- str_c(metal, collapse = "|")
+
+stone <- c("stone", "sandstone", "bluestone", "limestone")
+stone_match <- str_c(stone, collapse = "|")
+
+no_structure <- c("no structure", "no building", "no construction", "no property at address", "not yet built", "not applicable") # garden
+no_structure_match<- str_c(no_structure, collapse = "|")
+```
+
+
+```{r matirial_main, eval=FALSE}
+test <- sf_join_spatial_location %>% 
+  # lowercase
+  mutate(construction = tolower(construction)) %>%
+  # detect matches
+  mutate(
+    matirial_main = case_when(
+      str_detect(construction, brick_match) ~ "brick",
+      str_detect(construction, timber_match) ~ "timber",
+      str_detect(construction, fibro_match) ~ "fibro",
+      str_detect(construction, metal_match) ~ "metal",
+      str_detect(construction, stone_match) ~ "stone",
+      str_detect(construction, no_structure_match) ~ "unknown"
+    )) %>% 
+  mutate(
+    matirial_main = ifelse(is.na(matirial_main), "unknown", matirial_main)
+    )
+
+test %>%
+  dplyr::select(construction, matirial_main) %>% 
+  count(matirial_main, sort = TRUE)
+```
+
+
+```{r matirial_all}
+sf_join_spatial_location <- sf_join_spatial_location %>% 
+  # lowercase
+  mutate(construction = tolower(construction))
+
+sf_join_spatial_location$brick <- ifelse(
+  str_detect(sf_join_spatial_location$construction, brick_match), 
+  "brick", 
+  NA)
+
+sf_join_spatial_location$timber <- ifelse(
+  str_detect(sf_join_spatial_location$construction, timber_match), 
+  "timber", 
+  NA)
+
+sf_join_spatial_location$fibro <- ifelse(
+  str_detect(sf_join_spatial_location$construction, fibro_match), 
+  "fibro", 
+  NA)
+
+sf_join_spatial_location$metal <- ifelse(
+  str_detect(sf_join_spatial_location$construction, metal_match), 
+  "metal", 
+  NA)
+
+sf_join_spatial_location$stone <- ifelse(
+  str_detect(sf_join_spatial_location$construction, stone_match), 
+  "stone", 
+  NA)
+
+sf_join_spatial_location$no_structure <- ifelse(
+  str_detect(sf_join_spatial_location$construction, no_structure_match), 
+  "no_structure", 
+  NA)
+```
+
+```{r}
+test <- sf_join_spatial_location %>% 
+  unite("matirial_all", 
+        brick : no_structure, 
+        remove = FALSE, 
+        sep = ", ", 
+        na.rm = TRUE) %>% 
+  mutate(matirial_all = ifelse(!is.na(no_structure), "unknown", matirial_all)) %>%
+  mutate(matirial_all = ifelse(matirial_all == "", "unknown", matirial_all))
+
+test %>% 
+  count(matirial_all, sort = TRUE)
+```
+
+
+```{r}
+names(test)
+sf_join_spatial_location_meterial <- test
+```
+
+## Paint
+
+```{r paint match}
+unpainted <- c("not paint", "no paint", "- no$", "^no ", "not paiinted", "nott painted", "not paainted", "unpainted", "unplainted")
+unpainted_match <- str_c(unpainted, collapse = "|")
+
+painted <- c("paint", "painted", "pinted", "paainted", "yes", "only", "render", "partly")
+painted_match <- str_c(painted, collapse = "|")
+```
+
+
+```{r}
+test <- sf_join_spatial_location_meterial %>% 
+  mutate(construction = tolower(construction)) %>%
+  mutate(
+    paint = case_when(
+      # unpainted
+      str_detect(construction, unpainted_match) ~ "unpainted",
+      str_detect(construction, painted_match ) ~ "painted")) %>%
+  mutate(paint = ifelse(is.na(paint), "unknown", paint))
+
+test %>% 
+  count(paint, sort = TRUE)
+
+check_paint <- test %>% 
+  count(construction, paint, sort = TRUE)
+write_csv(check_paint, "../data_output/check_paint.csv")
+```
+
+```{r}
+names(test)
+sf_join_spatial_location_meterial_paint <- test
+```
+
+
+```{r}
+write_rds(sf_join_spatial_location_meterial_paint, "../data_output/sf_join_spatial_location_meterial_paint.rds")
+```
+
+# Further Clean
+
+```{r}
+sf_attribute_clean <- read_rds("../data_output/sf_join_spatial_location_meterial_paint.rds")
+```
+
+```{r}
+sf_attribute_clean <- sf_attribute_clean %>% 
+  rename(
+    As = "As (mg/kg)",
+    Cd = "Cd (mg/kg)",
+    Cr = "Cr (mg/kg)",
+    Cu = "Cu (mg/kg)",
+    Hg = "Hg (mg/kg)",
+    Mn = "Mn (mg/kg)",
+    Pb = "Pb (mg/kg)",
+    Ni = "Ni (mg/kg)",
+    Zn = "Zn (mg/kg)")
+```
+
+Further clean: 17338 to 17256, 82 further removed samples
+
+```{r}
+sf_attribute_clean %>%
+  ggplot(aes(Pb)) +
+  geom_histogram(binwidth = 10) +
+  coord_cartesian(xlim = c(0, 1000))
+
+sf_further_clean <- sf_attribute_clean %>% 
+  # remove Benjamin
+  filter(OwnerName != "Benjamin Keegan") %>% 
+  # remove All 0
+  filter(!((As == 0) & (Cd == 0) & (Cr == 0) & (Cu == 0) & (Mn == 0) & (Pb == 0) & (Ni == 0) & (Zn == 0))) %>% 
+  # remove 2 wrong exmpale
+  #filter(!(Pb == 30500 | Pb == 17100)) %>% 
+  filter(Pb != 30500) %>% 
+  filter(Pb != 17100) %>% 
+  dplyr::select(- Hg) %>% 
+  # turn negative values to 0 
+  mutate(
+    As = ifelse(As < 0, 0, As),
+    Cd = ifelse(Cd < 0, 0, Cd),
+    Cr = ifelse(Cr< 0, 0, Cr),
+    Cu = ifelse(Cu < 0, 0, Cu),
+    Mn = ifelse(Mn < 0, 0, Mn),
+    Pb = ifelse(Pb < 0, 0, Pb),
+    Ni = ifelse(Ni < 0, 0, Ni),
+    Zn = ifelse(Zn < 0, 0, Zn))
+
+write_rds(sf_further_clean, "../data_output/sf_further_clean.rds")
+```
+
+
+```{r}
+further_removed_samples <- sf_attribute_clean %>% 
+  filter(
+    # All 0 records
+    ((As == 0) & (Cd == 0) & (Cr == 0) & (Cu == 0) & (Mn == 0) & (Pb == 0) & (Ni == 0) & (Zn == 0))|
+      OwnerName == "Benjamin Keegan" |
+      Pb == 30500 |
+      Pb == 17100
+  )
+
+sf_attribute_clean %>% 
+  filter(OwnerName == "Benjamin Keegan")
+
+write_csv(removed_samples, "../data_output/further_removed_samples.csv")
+```
+
+
+```{r}
+names(sf_further_clean)
+mapview(sf_further_clean)
+
+sf_final <- sf_further_clean[ , c("ID", "OwnerName", "OwnerAddress", 
+                                  "Longitude", "Latitude",
+                                  "PropertyAge", 
+                                  "sample_location", "sample_location_category",
+                                  "construction", "paint", "matirial_all",
+                                  "brick", "timber", "fibro", 
+                                  "metal", "stone", "no_structure",
+                                  "As", "Cd", "Cr", "Cu", 
+                                  "Mn", "Pb", "Ni", "Zn",
+                                  "CreatedDate", "create_date",
+                                  "create_date_monthly", "create_date_yearly",
+                                  "sua_code", "sua_name",
+                                  "sa3_code", "sa3_name",
+                                  "sa2_main", "sa2_5dig", "sa2_name"
+                                  )]
+
+write_rds(sf_final, "../data_output/sf_final.rds")
+
+df_final <- st_drop_geometry(sf_final)
+write_csv(df_final, "../data_output/VegeSafe_ALL_20200523_lat_lon_Modified.csv")
+
+sf_final %>% 
+  count(OwnerAddress)
+```
+
+
+# Geocode
+
+```{r}
+library(ggmap)
+#Set your API Key
+ggmap::register_google(key = "AIzaSyC0jviGocL_Wdw5C7mw8MqIrtpyci3VZ58")
+```
+
+```{r}
+sf_final <- read_rds("../data_output/sf_final.rds")
+```
+
+
+
+
+```{r}
+sf_wrong_location <- sf_join %>% 
+  filter(is.na(sua_name))
+mapview(sf_wrong_location)
+
+df_wrong_location <- st_drop_geometry(sf_wrong_location)
+
+df_wrong_location %>% 
+  distinct(OwnerAddress)
+
+test <- df_wrong_location %>% 
+  mutate_geocode(OwnerAddress)
+
+test_sf <- st_as_sf(test, 
+                    coords = c("lon", "lat"), 
+                    crs = 4326,
+                    remove = FALSE)
+mapview(test_sf)
+```
+
+```{r}
+test_sf <- test_sf %>% 
+  select(- sua_code, - sua_name, - sa3_code, - sa3_name, - sa2_main, - sa2_5dig, -sa2_name)
+
+test_sf <- st_transform(test_sf, 4283)
+
+test_sf <- test_sf %>% 
+  st_join(sf_sua) %>% 
+  dplyr::select(-AREASQKM16) %>% 
+  st_join(sf_sa3) %>% 
+  dplyr::select(-SA4_CODE16, 
+                -SA4_NAME16, 
+                -GCC_CODE16, 
+                -GCC_NAME16, 
+                -STE_CODE16, 
+                -STE_NAME16, 
+                -AREASQKM16) %>% 
+  st_join(sf_sa2) %>% 
+  dplyr::select(-SA3_CODE16.y,
+                -SA3_NAME16.y,
+                -SA4_CODE16,
+                -SA4_NAME16,
+                -GCC_CODE16,
+                -GCC_NAME16,
+                -STE_CODE16,
+                -STE_NAME16,
+                -AREASQKM16)
+
+test_sf <- test_sf %>% 
+  rename(sua_code = "SUA_CODE16",
+         sua_name = "SUA_NAME16",
+         sa3_code = "SA3_CODE16.x",
+         sa3_name = "SA3_NAME16.x",
+         sa2_main = "SA2_MAIN16",
+         sa2_5dig = "SA2_5DIG16",
+         sa2_name = "SA2_NAME16")
+```
+
+
+
+```{r}
+df_join <- st_drop_geometry(sf_join)
+df_join %>% 
+  filter(is.na(sua_name))
+
+df_join[is.na(df_join$sua_code), "Longitude"] <- test_sf$lon
+df_join[is.na(df_join$sua_code), "Latitude"] <- test_sf$lat
+
+df_join[is.na(df_join$sua_code), "sua_code"] <- test_sf$sua_code
+df_join[is.na(df_join$sua_name), "sua_name"] <- test_sf$sua_name
+df_join[is.na(df_join$sa3_code), "sa3_code"] <- test_sf$sa3_code
+df_join[is.na(df_join$sa3_name), "sa3_name"] <- test_sf$sa3_name
+df_join[is.na(df_join$sa2_main), "sa2_main"] <- test_sf$sa2_main
+df_join[is.na(df_join$sa2_5dig), "sa2_5dig"] <- test_sf$sa2_5dig
+df_join[is.na(df_join$sa2_name), "sa2_name"] <- test_sf$sa2_name
+```
+
+
+```{r}
+sf_join_clean <- st_as_sf(df_join, 
+                          coords = c("Longitude", "Latitude"), 
+                          crs = 4326,
+                          remove = FALSE)
+mapview(sf_join_clean)
+
+sf_join_clean <- st_transform(sf_join_clean, 4283)
+
+write_rds(sf_join_clean, "../data_output/sf_join_clean.rds")
+write_csv(df_join, "../data_output/VegeSafe_ALL_20200519_lat_lon_Modified.csv")
+df_join <- read_csv("../data_output/VegeSafe_ALL_20200519_lat_lon_Modified.csv")
+```
+
+
+
+
+
+# Summary
+
+```{r}
+df_house <- df_final %>% 
+  group_by(OwnerAddress) %>% 
+  mutate(As_mean = round(mean(As), 2),
+         Cd_mean = round(mean(Cd), 2),
+         Cr_mean = round(mean(Cr), 2),
+         Cu_mean = round(mean(Cu), 2),
+         Mn_mean = round(mean(Mn), 2),
+         Pb_mean = round(mean(Pb), 2),
+         Ni_mean = round(mean(Ni), 2),
+         Zn_mean = round(mean(Zn), 2)) %>% 
+  slice(n()) %>% 
+  ungroup() %>% 
+  select(- ID, - sample_location, -sample_location_category, 
+         - As, - Cd, - Cr, - Cu, - Mn, - Pb, - Ni, - Zn)
+
+
+write_csv(df_house, "../data_output/Summary_Household_Lat_Lon_Modified.csv")
+```
+
+
+```{r}
+df_final %>%
+  filter(sample_location_category == "veggiepatch")
+
+df_veggie_house <- df_final %>%
+  filter(sample_location_category == "veggiepatch") %>% 
+  group_by(OwnerAddress) %>% 
+  mutate(As_mean = round(mean(As), 2),
+         Cd_mean = round(mean(Cd), 2),
+         Cr_mean = round(mean(Cr), 2),
+         Cu_mean = round(mean(Cu), 2),
+         Mn_mean = round(mean(Mn), 2),
+         Pb_mean = round(mean(Pb), 2),
+         Ni_mean = round(mean(Ni), 2),
+         Zn_mean = round(mean(Zn), 2)) %>%  
+  slice(n()) %>% 
+  ungroup() %>% 
+  select(- ID, 
+         - As, - Cd, - Cr, - Cu, - Mn, - Pb, - Ni, - Zn)
+
+df_house
+
+write_csv(df_veggie_house, "../data_output/Summary_Veggiepatch_Household_Lat_Lon_Modified.csv")
+```
+
+
+
